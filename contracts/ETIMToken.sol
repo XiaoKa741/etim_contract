@@ -1,0 +1,160 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+interface IETIMMain {
+    function procTokenTransfer(
+        address from,
+        address to,
+        uint256 value
+    ) external;
+}
+
+contract ETIMToken is ERC20, Ownable {
+    uint256 public constant TOTAL_SUPPLY = 2_100_000_000 * 10 ** 18;
+    address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+
+    // 各模块分配
+    uint256 public constant GROWTH_POOL = 1_953_000_000 * 10 ** 18; // 92.7%
+    uint256 public constant MARKET_INFRA = 105_000_000 * 10 ** 18; // 5%
+    uint256 public constant ECOSYSTEM_FUND = 21_000_000 * 10 ** 18; // 1%
+    uint256 public constant COMMUNITY_FUND = 21_000_000 * 10 ** 18; // 1%
+    uint256 public constant ETH_FOUNDATION = 6_300_000 * 10 ** 18; // 0.3%
+
+    // 分配地址
+    // address public growthPool; // 增长池 92.7%
+    address public marketInfra; // 市场基础设施 5%
+    address public ecoFund; // 生态建设基金 1%
+    address public communityFund; // 社区建设 1%
+    address public ethFoundation; // 以太坊基金会 0.3%
+
+    // 增长池已释放数量
+    uint256 public growthPoolReleased;
+
+    // 主逻辑合约
+    address public mainContract;
+
+    // 转账事件
+    event TransferWithInvitation(
+        address indexed from,
+        address indexed to,
+        uint256 value,
+        uint256 timestamp,
+        bytes32 transferId
+    );
+
+    modifier onlyMainContract() {
+        require(msg.sender == mainContract, "Only main contract");
+        _;
+    }
+
+    constructor(
+        address _marketInfra,
+        address _ecoFund,
+        address _communityFund,
+        address _ethFoundation
+    ) ERC20("ETIM Token", "ETIM") Ownable(msg.sender) {
+        marketInfra = _marketInfra;
+        ecoFund = _ecoFund;
+        communityFund = _communityFund;
+        ethFoundation = _ethFoundation;
+
+        // 初始分配
+        _mint(address(this), TOTAL_SUPPLY);
+        _transfer(address(this), marketInfra, MARKET_INFRA);
+        _transfer(address(this), ecoFund, ECOSYSTEM_FUND);
+        _transfer(address(this), communityFund, COMMUNITY_FUND);
+        _transfer(address(this), ethFoundation, ETH_FOUNDATION);
+    }
+
+    // 设置主合约
+    function setMainContract(address _mainContract) external onlyOwner {
+        require(mainContract == address(0), "Already set");
+        mainContract = _mainContract;
+    }
+
+    // 增长池释放代币
+    function releaseFromGrowthPool(
+        address to,
+        uint256 amount
+    ) external onlyMainContract {
+        require(
+            growthPoolReleased + amount <= GROWTH_POOL,
+            "Exceeds growth pool"
+        );
+        growthPoolReleased += amount;
+        _transfer(address(this), to, amount);
+    }
+
+    // 销毁功能
+    function burnToBlackHole(uint256 amount) external onlyMainContract {
+        _transfer(address(this), BURN_ADDRESS, amount);
+    }
+
+    // 获取剩余增长池数量
+    function remainingGrowthPool() external view returns (uint256) {
+        return GROWTH_POOL - growthPoolReleased;
+    }
+
+    // 检查增长池是否挖完
+    function isGrowthPoolDepleted() external view returns (bool) {
+        return growthPoolReleased >= GROWTH_POOL;
+    }
+
+    // 代币转账1
+    function transfer(
+        address to,
+        uint256 value
+    ) public override returns (bool) {
+        bool success = super.transfer(to, value);
+        if (success) {
+            afterTransfer(msg.sender, to, value);
+        }
+        return success;
+    }
+
+    // 代币转账2
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    ) public override returns (bool) {
+        bool success = super.transferFrom(from, to, value);
+        if (success) {
+            afterTransfer(from, to, value);
+        }
+        return success;
+    }
+
+    // 检查是否合约
+    function _isContract(address addr) internal view returns (bool) {
+        return addr.code.length > 0;
+    }
+
+    // 转账触发邀请关系
+    function afterTransfer(address from, address to, uint256 value) internal {
+        if (
+            value == 0 ||
+            mainContract == address(0) ||
+            _isContract(from) ||
+            _isContract(to)
+        ) {
+            return;
+        }
+        bytes32 transferId = keccak256(abi.encodePacked(from, to, value, block.timestamp, block.number));
+        emit TransferWithInvitation(
+            from,
+            to,
+            value,
+            block.timestamp,
+            transferId
+        );
+
+        // 忽略失败情况
+        try IETIMMain(mainContract).procTokenTransfer(from, to, value) {
+            // do nothing
+        } catch {}
+    }
+}
