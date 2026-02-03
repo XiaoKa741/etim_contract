@@ -19,12 +19,14 @@ const WETH9_ABI = [
     "event Withdrawal(address indexed src, uint wad)"
 ];
 
-async function getWETHContract(signer = null) {
+async function getWETHContract(signer = null, weth_address = null) {
     if (!signer) {
         const [defaultSigner] = await ethers.getSigners();
         signer = defaultSigner;
     }
-
+    if (weth_address) {
+        return new ethers.Contract(weth_address, WETH9_ABI, signer);
+    }
     return new ethers.Contract(WETH9_ADDRESS, WETH9_ABI, signer);
 }
 

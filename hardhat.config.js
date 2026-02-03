@@ -1,5 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
-// require("dotenv").config();
+require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -18,6 +18,10 @@ module.exports = {
         blockNumber: 13945678, // 指定区块（可选）
       },
       initialBaseFeePerGas: 0, // 设置为0，这样就不会有基础费用了
+    },
+    sepolia: {
+      url: process.env.SEPOLIA_RPC_URL,
+      accounts: [process.env.PRIVATE_KEY, process.env.PRIVATE_KEY1],
     }
   }
 };
