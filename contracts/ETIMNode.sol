@@ -9,6 +9,11 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 interface IETIMMain {
     function getUserLevel(address user) external view returns (uint8);
     function wethPriceInUSD() external view returns (uint256);
+    function wethPriceInEtim() external view returns (uint256);
+}
+
+interface IETIMToken {
+    function releaseFromGrowthPool(address to, uint256 amount) external;
 }
 
 contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
@@ -18,7 +23,8 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
 
     uint256 public totalMinted;
     address public mainContract;
-    IERC20 public weth;
+    address public tokenContract;
+    // IERC20 public weth;
 
     // uri
     string private baseTokenURI = "https://aof.global/etim/assert/node/";
@@ -55,10 +61,7 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
     event PriceUpdateTimeRecorded(uint256 timestamp);
 
     constructor(
-        address _weth
-    ) ERC721("ETIM Node", "ENODE") Ownable(msg.sender) {
-        weth = IERC20(_weth);
-    }
+    ) ERC721("ETIM Node", "ENODE") Ownable(msg.sender) {}
 
     //
     function deposit() external payable nonReentrant {
@@ -121,9 +124,9 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
     }
 
     // 添加业绩到分红池（主合约调用）
-    function addPerformance(uint256 amount) external {
+    function addPerformance(uint256 etimAmount) external {
         require(msg.sender == mainContract, "Only main contract");
-        totalPerformancePool += amount;
+        totalPerformancePool += etimAmount;
 
         // 实时分配业绩
         _distributePerformance();
@@ -131,27 +134,24 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
 
     // 分配业绩奖励给所有激活的节点
     function _distributePerformance() internal {
-        uint256 pendingDistribution = totalPerformancePool -
-            lastDistributedPerformance;
+        uint256 pendingDistribution = totalPerformancePool - lastDistributedPerformance;
         if (pendingDistribution == 0 || activatedNodeCount == 0) return;
 
         uint256 rewardPerNode = pendingDistribution / activatedNodeCount;
         if (rewardPerNode == 0) return;
 
-        // 当前节点额度WETH价格
+        // 当前节点额度价格兑换
         uint256 wethPriceInUSD = IETIMMain(mainContract).wethPriceInUSD();
-        uint256 nodeGotLimitInWETH = (NODE_QUOTA_MULTIPLIER * 10 ** 18) /
-            wethPriceInUSD;
+        uint256 wethPriceInEtim = IETIMMain(mainContract).wethPriceInEtim();
+        uint256 nodeGotLimitInWETH = (NODE_QUOTA_MULTIPLIER * 10 ** 18) / wethPriceInUSD;
+        uint256 nodeGotLimitInEtim = nodeGotLimitInWETH * wethPriceInEtim / 10 ** 18;
 
         // 分配给每个激活的节点
         for (uint256 i = 1; i <= totalMinted; i++) {
             if (nodeActivated[i]) {
-                uint256 currentGotInWETH = nodePerformanceAddup[i];
-                uint256 remainGainInWETH = nodeGotLimitInWETH -
-                    currentGotInWETH; // 剩余可获取的额度
-                rewardPerNode = rewardPerNode > remainGainInWETH
-                    ? remainGainInWETH
-                    : rewardPerNode;
+                uint256 currentGotInETIM = nodePerformanceAddup[i];
+                uint256 remainGainInETIM = nodeGotLimitInEtim - currentGotInETIM; // 剩余可获取的额度
+                rewardPerNode = rewardPerNode > remainGainInETIM ? remainGainInETIM : rewardPerNode;
                 if (rewardPerNode > 0) {
                     nodePerformanceRewards[i] += rewardPerNode;
                     nodePerformanceAddup[i] += rewardPerNode;
@@ -171,24 +171,16 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
     }
     */
 
-    // 节点持有者领取奖励
-    function claimRewards(uint256 tokenId) external nonReentrant {
+    // 节点持有者领取奖励ETIM
+    function claim(uint256 tokenId) external nonReentrant {
         require(ownerOf(tokenId) == msg.sender, "Not node owner");
         require(nodeActivated[tokenId], "Node not activated");
 
         uint256 rewards = nodePerformanceRewards[tokenId];
         require(rewards > 0, "No rewards to claim");
 
-        // 检查合约WETH余额是否充足
-        // require(weth.balanceOf(address(this)) >= rewards, "Insufficient contract balance");
-
-        // 检查合约ETH数量
-        require(address(this).balance >= rewards, "Insufficient ETH");
-
-        // 转账WETH奖励
-        // require(weth.transfer(msg.sender, rewards), "WETH transfer failed");
-        (bool success, ) = payable(msg.sender).call{value: rewards}("");
-        require(success, "ETH transfer failed");
+        // 从增长池释放代币
+        IETIMToken(tokenContract).releaseFromGrowthPool(msg.sender, rewards);
         
         nodePerformanceRewards[tokenId] = 0;
 
@@ -271,8 +263,14 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
 
     // 设置逻辑合约
     function setMainContract(address _mainContract) external onlyOwner {
-        require(mainContract == address(0), "Already set");
+        require(mainContract == address(0), "Main contract already set");
         mainContract = _mainContract;
+    }
+
+    // 设置代币合约
+    function setTokenContract(address _tokenContract) external onlyOwner {
+        require(tokenContract == address(0), "Token contract already set");
+        tokenContract = _tokenContract;
     }
 
     // 设置BaseUri
@@ -281,8 +279,27 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
     }
 
     // 提取合约中的WETH（仅owner）
-    function withdrawWETH(uint256 amount) external onlyOwner {
-        uint256 contractBalance = weth.balanceOf(address(this));
+    // function withdrawWETH(uint256 amount) external onlyOwner {
+    //     uint256 contractBalance = weth.balanceOf(address(this));
+
+    //     // 计算所有待领取的奖励总额
+    //     uint256 totalPendingRewards = 0;
+    //     for (uint256 i = 1; i <= totalMinted; i++) {
+    //         totalPendingRewards += nodePerformanceRewards[i];
+    //     }
+
+    //     // 只允许提取超出待领取奖励的部分
+    //     require(
+    //         contractBalance >= totalPendingRewards + amount,
+    //         "Cannot withdraw user rewards"
+    //     );
+
+    //     require(weth.transfer(owner(), amount), "WETH transfer failed");
+    // }
+
+    // 提取合约中的ETH（仅owner）
+    function withdrawETH(uint256 amount) external onlyOwner {
+        uint256 contractBalance = address(this).balance;
 
         // 计算所有待领取的奖励总额
         uint256 totalPendingRewards = 0;
@@ -291,11 +308,9 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
         }
 
         // 只允许提取超出待领取奖励的部分
-        require(
-            contractBalance >= totalPendingRewards + amount,
-            "Cannot withdraw user rewards"
-        );
+        require(contractBalance >= totalPendingRewards + amount, "Cannot withdraw user rewards");
 
-        require(weth.transfer(owner(), amount), "WETH transfer failed");
+        (bool success, ) = owner().call{value: amount}("");
+        require(success, "ETH transfer failed");
     }
 }

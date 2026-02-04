@@ -7,7 +7,7 @@ module.exports = {
   settings: {
     optimizer: {
       enabled: true, // 开启优化器
-      runs: 1, // 推荐值：runs越小，部署字节码越小；200是平衡部署/运行的通用值
+      runs: 200, // 推荐值：runs越小，部署字节码越小；200是平衡部署/运行的通用值
     },
     viaIR: true,
   },

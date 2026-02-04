@@ -30,7 +30,7 @@ async function main() {
 
     // console.log("etimNode 合约内WETH数量", ethers.formatEther(await weth.balanceOf(ETIMNodeAddress)));
     // await getETH_WETH_ETIM(b, weth, etimToken);
-    // tx = await etimNode.connect(b).claimRewards(1);
+    // tx = await etimNode.connect(b).claim(1);
     // console.log((await tx.wait()).hash);
     // await getETH_WETH_ETIM(b, weth, etimToken);
     // console.log("etimNode 合约内WETH数量", ethers.formatEther(await weth.balanceOf(ETIMNodeAddress)));

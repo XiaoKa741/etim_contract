@@ -20,7 +20,7 @@ async function main() {
     const ETIMToken = await ethers.getContractFactory("ETIMToken");
 
     // 代币参数
-    const etimToken = await ETIMToken.deploy(deployer1.address, deployer1.address, deployer1.address, deployer1.address);
+    const etimToken = await ETIMToken.deploy(deployer1.address, deployer1.address, deployer1.address, deployer1.address, deployer1.address);
     await etimToken.waitForDeployment();
     const etimTokenAddress = await etimToken.getAddress();
     console.log("ETIM代币合约地址:", etimTokenAddress);
@@ -34,7 +34,7 @@ async function main() {
     console.log("\n2. 部署节点NFT合约...");
     const ETIMNode = await ethers.getContractFactory("ETIMNode");
 
-    const etimNode = await ETIMNode.deploy(wethAddress);
+    const etimNode = await ETIMNode.deploy();
     await etimNode.waitForDeployment();
     const etimNodeAddress = await etimNode.getAddress();
     console.log("节点合约地址:", etimNodeAddress);
@@ -66,7 +66,6 @@ async function main() {
         etimTokenAddress,
         etimNodeAddress,
         router,
-        wethAddress,
         usdcAddress
     );
     await etimMain.waitForDeployment();
