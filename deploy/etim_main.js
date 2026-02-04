@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 const { getWETHContract } = require("./util");
 const { formatEther } = require("ethers");
 
-const ETIMMainAddress = '0x3aAde2dCD2Df6a8cAc689EE797591b2913658659';
+const ETIMMainAddress = '0xffa7CA1AEEEbBc30C874d32C7e22F052BbEa0429';
 const ETIMTokenAddress = '0xA7c59f010700930003b33aB25a7a0679C860f29c';
 const ETIMNodeAddress = '0xfaAddC93baf78e89DCf37bA67943E1bE8F37Bb8c';
 const WETHAddress = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
@@ -14,17 +14,17 @@ async function main() {
     const etimNode = await ethers.getContractAt("ETIMNode", ETIMNodeAddress);
     const weth = await getWETHContract();
 
-    const [deployer, marketInfra, ecoFund, communityFund, ethFoundation, a, b, c, d, e, f] = await ethers.getSigners();
+    const [deployer, marketInfra, ecoFund, communityFund, airdrop, ethFoundation, a, b, c, d, e, f] = await ethers.getSigners();
 
     // 调整区块时间
     // await updateBlockTime();
 
-    // tx = await etimMain._getCurrentPrice();
-    // await tx.wait();
-    // console.log('etim per weth: ', ethers.formatEther(await etimMain.wethPriceInEtim()));
-    // tx = await etimMain._getCurrentPriceWethInU();
-    // await tx.wait();
-    // console.log('usdc per weth: ', ethers.formatUnits(await etimMain.wethPriceInUSD(), 6));
+    tx = await etimMain.getPriceWethInEtim();
+    await tx.wait();
+    console.log('etim per weth: ', ethers.formatEther(await etimMain.wethPriceInEtim()));
+    tx = await etimMain.getPriceWethInU();
+    await tx.wait();
+    console.log('usdc per weth: ', ethers.formatUnits(await etimMain.wethPriceInUSD(), 6));
 
     // tx = await etimMain.updateDailyPrice();
     // await tx.wait();
@@ -33,7 +33,7 @@ async function main() {
     // await participate(deployer, etimMain, weth);
 
     // await participate(a, etimMain, weth);
-    await participate(b, etimMain, weth);
+    // await participate(b, etimMain, weth);
     // await participate(c, etimMain, weth);
     // await participate(d, etimMain, weth);
     // await participate(e, etimMain, weth);
@@ -97,7 +97,7 @@ async function main() {
     // console.log(await etimNode.connect(b).totalPerformancePool());
     // console.log(await etimToken.balanceOf(ETIMMainAddress));
 
-    await getPriceFromUniswapV2(WETHAddress, ETIMTokenAddress, ethers.parseEther("1"));
+    await getPriceFromUniswapV2(WETHAddress, ETIMTokenAddress, ethers.parseEther("0.00001"));
     {
         const provider = ethers.provider;
         const block = await provider.getBlock("latest");
@@ -173,7 +173,6 @@ async function getETH_WETH_ETIM(user, weth, etimToken) {
 async function getEtimMainStatus(etimMain) {
     console.log("etimMain 参与人数", await etimMain.totalUsers());
     console.log("etimMain deposited(WETH)", ethers.formatEther(await etimMain.totalDeposited()));
-    console.log("etimMain node总业绩(WETH)", ethers.formatEther(await etimMain.totalNodePerformance()));
     console.log('etimMain 价格(ETIM per WETH): ', ethers.formatEther(await etimMain.wethPriceInEtim()));
     console.log('etimMain 价格(USDC per WETH): ', ethers.formatUnits(await etimMain.wethPriceInUSD(), 6));
     console.log('etimMain 价格(ETIM per USDC): ', ethers.formatEther(await etimMain.usdPriceInEtim()));

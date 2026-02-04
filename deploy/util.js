@@ -32,7 +32,5 @@ async function getWETHContract(signer = null, weth_address = null) {
 
 // 导出方式
 module.exports = {
-    WETH9_ADDRESS,
-    WETH9_ABI,
     getWETHContract
 };

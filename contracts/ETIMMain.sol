@@ -170,7 +170,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         usdc = IERC20(_usdc);
         
         _initializeLevels();
-        _initializeLPPair();
     }
     
     // 初始化会员条件
@@ -183,20 +182,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         levelConditions[5] = LevelCondition(25, 2000000 * 10**18, 25000000 * 10**18, 18);
         levelConditions[6] = LevelCondition(30, 3000000 * 10**18, 50000000 * 10**18, 20);
         levelConditions[7] = LevelCondition(40, 3500000 * 10**18, 80000000 * 10**18, 22);
-    }
-    
-    // 初始化 LP Pair
-    function _initializeLPPair() private {
-        // 检查是否已存在 ETIM/ETH 交易对
-        address existingPair = uniswapFactory.getPair(address(etimToken), uniswapRouter.WETH());
-        
-        if (existingPair == address(0)) {
-            // 创建新的交易对
-            lpPair = uniswapFactory.createPair(address(etimToken), uniswapRouter.WETH());
-        } else {
-            lpPair = existingPair;
-        }
-        etimToken.setUniswapV2PairRouter(address(uniswapRouter), lpPair);
     }
 
     // 用户存入ETH进行参与
@@ -216,7 +201,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
         require(dailyDepositAmount <= dailyDepositMax * dailyDepositRate / 1000, "Daily deposit limit");
         // 计算投入价值（U本位）
-        uint256 perWethInU = _getCurrentPriceWethInU();
+        uint256 perWethInU = getPriceWethInU();
         uint256 requiredMinEth = (participationAmountMin * 10 ** 18) / perWethInU;
         uint256 requiredMaxEth = (participationAmountMax * 10 ** 18) / perWethInU;
         require(amount >= requiredMinEth && amount <= requiredMaxEth, "Invalid transfer amount");
@@ -238,7 +223,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             
             // 1% 给节点（置换成etim）
             if (nodeAmount > 0) {
-                uint256 nodeEtimAmount = nodeAmount * _getCurrentPrice();
+                uint256 nodeEtimAmount = nodeAmount * getPriceWethInEtim();
                 etimNode.addPerformance(nodeEtimAmount);
             }
             // 69% 加入LP
@@ -521,7 +506,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // }
     
     // 获取当前价格（ETIM per WETH）
-    function _getCurrentPrice() public returns (uint256) {
+    function getPriceWethInEtim() public returns (uint256) {
         if (latestTimeWE + 60 < block.timestamp) {
             // 尝试从Uniswap获取
             uint256 price = _getPriceFromUniswap();
@@ -534,8 +519,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     }
 
     // 获取当前价格（USDC per WETH）
-    function _getCurrentPriceWethInU() public returns (uint256) {
-        if (latestTimeWU + 300 < block.timestamp) {
+    function getPriceWethInU() public returns (uint256) {
+        if (latestTimeWU + 60 < block.timestamp) {
             uint256 price = _getPriceFromUniswapWethInU();
             if(price > 0) {
                 wethPriceInUSD = price;
@@ -545,20 +530,25 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         return wethPriceInUSD;
     }
     
-    //Uniswap获取 etim per eth
+    // Uniswap获取 etim per eth
     function _getPriceFromUniswap() private view returns (uint256) {
-        address[] memory path = new address[](2);
-        path[0] = uniswapRouter.WETH();
-        path[1] = address(etimToken);
-        
-        try uniswapRouter.getAmountsOut(10**18, path) returns (uint[] memory amounts) {
-            if (amounts.length == 2 && amounts[1] > 0) {
-                return amounts[1]; // ETIM数量 per 1 ETH
-            }
-        } catch {}
-        
+        IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
+        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+
+        uint256 reserveETIM;
+        uint256 reserveWETH;
+        if (pair.token0() == uniswapRouter.WETH()) {
+            reserveWETH = uint256(reserve0);
+            reserveETIM = uint256(reserve1);
+        } else {
+            reserveWETH = uint256(reserve1);
+            reserveETIM = uint256(reserve0);
+        }
+
+        if (reserveWETH > 0) {
+            return reserveETIM * 10 ** 18 / reserveWETH;
+        }
         return 0;
-        // return 2000 * 10**18; // 默认价格 2000 ETIM per 1 WETH
     }
 
     // Uniswap获取 usd per eth
@@ -576,7 +566,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         return 0;
     }
 
-    // Uniswap 获取eth余量(etim/eth)
+    // LP Pair获取eth余量(etim/eth)
     function _getEthReserves() public view returns (uint256 ethReserves) {
         IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
         (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
@@ -588,11 +578,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     }
     
     // 计算ETIM对应的WETH价值
-    function _getWETHForETIM(uint256 etimAmount) private returns (uint256) {
-        uint256 currentPrice = _getCurrentPrice();
-        if (currentPrice == 0) return 0;
-        return (etimAmount * 10**18) / currentPrice;
-    }
+    // function _getWETHForETIM(uint256 etimAmount) private returns (uint256) {
+    //     uint256 currentPrice = getPriceWethInEtim();
+    //     if (currentPrice == 0) return 0;
+    //     return (etimAmount * 10**18) / currentPrice;
+    // }
     
     // 代币转账回调
     function procTokenTransfer(
@@ -817,7 +807,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         require(valueInU <= delayAssignAmountInU, "Invalid value");
         
         // 转等值的WETH
-        uint256 requiredWETH = (valueInU * 10 ** 18) / _getCurrentPriceWethInU();
+        uint256 requiredWETH = (valueInU * 10 ** 18) / getPriceWethInU();
 
         // 分配资金(按照WETH来)
         uint256 nodeAmount = (requiredWETH * NODE_SHARE) / FEE_DENOMINATOR;
@@ -826,7 +816,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
         // 1% 给节点（置换成etim）
         if (nodeAmount > 0) {
-            uint256 nodeEtimAmount = nodeAmount * _getCurrentPrice();
+            uint256 nodeEtimAmount = nodeAmount * getPriceWethInEtim();
             etimNode.addPerformance(nodeEtimAmount);
         }
         
@@ -841,6 +831,22 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
 
         delayAssignAmountInU -= valueInU;
+    }
+
+    // 初始化 LP Pair
+    function initializeLPPair() external onlyOwner {
+        require(lpPair == address(0), "Pair already init");
+        
+        // 检查是否已存在 ETIM/ETH 交易对
+        address existingPair = uniswapFactory.getPair(address(etimToken), uniswapRouter.WETH());
+
+        if (existingPair == address(0)) {
+            // 创建新的交易对
+            lpPair = uniswapFactory.createPair(address(etimToken), uniswapRouter.WETH());
+        } else {
+            lpPair = existingPair;
+        }
+        etimToken.setUniswapV2PairRouter(address(uniswapRouter), lpPair);
     }
 
     // 原生代币转入合约触发

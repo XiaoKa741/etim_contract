@@ -100,11 +100,10 @@ contract ETIMToken is ERC20, Ownable {
     function releaseFromGrowthPool(
         address to,
         uint256 amount
-    ) external onlyMainContract {
-        require(
-            growthPoolReleased + amount <= GROWTH_POOL,
-            "Exceeds growth pool"
-        );
+    ) external {
+        require(msg.sender == mainContract || msg.sender == nodeContract, "Only main/node contract");
+        require(growthPoolReleased + amount <= GROWTH_POOL, "Exceeds growth pool");
+        
         growthPoolReleased += amount;
         _transfer(address(this), to, amount);
     }

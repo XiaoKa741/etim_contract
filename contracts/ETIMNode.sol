@@ -8,8 +8,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IETIMMain {
     function getUserLevel(address user) external view returns (uint8);
-    function wethPriceInUSD() external view returns (uint256);
-    function wethPriceInEtim() external view returns (uint256);
+    function getPriceWethInU() external view returns (uint256);
+    function getPriceWethInEtim() external view returns (uint256);
 }
 
 interface IETIMToken {
@@ -79,7 +79,7 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
         require(mainContract != address(0), "Main contract not set");
 
         // 从主合约读取WETH/USD价格
-        uint256 wethPriceInUSD = IETIMMain(mainContract).wethPriceInUSD();
+        uint256 wethPriceInUSD = IETIMMain(mainContract).getPriceWethInU();
         require(wethPriceInUSD > 0, "Invalid WETH price");
 
         // 1000USD等值的WETH
@@ -141,16 +141,16 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
         if (rewardPerNode == 0) return;
 
         // 当前节点额度价格兑换
-        uint256 wethPriceInUSD = IETIMMain(mainContract).wethPriceInUSD();
-        uint256 wethPriceInEtim = IETIMMain(mainContract).wethPriceInEtim();
-        uint256 nodeGotLimitInWETH = (NODE_QUOTA_MULTIPLIER * 10 ** 18) / wethPriceInUSD;
-        uint256 nodeGotLimitInEtim = nodeGotLimitInWETH * wethPriceInEtim / 10 ** 18;
+        uint256 wethPriceInUSD = IETIMMain(mainContract).getPriceWethInU();
+        uint256 wethPriceInEtim = IETIMMain(mainContract).getPriceWethInEtim();
+        uint256 nodeLimitInWETH = (NODE_QUOTA_MULTIPLIER * 10 ** 18) / wethPriceInUSD;
+        uint256 nodeLimitInEtim = nodeLimitInWETH * wethPriceInEtim / 10 ** 18;
 
         // 分配给每个激活的节点
         for (uint256 i = 1; i <= totalMinted; i++) {
             if (nodeActivated[i]) {
                 uint256 currentGotInETIM = nodePerformanceAddup[i];
-                uint256 remainGainInETIM = nodeGotLimitInEtim - currentGotInETIM; // 剩余可获取的额度
+                uint256 remainGainInETIM = nodeLimitInEtim - currentGotInETIM; // 剩余可获取的额度
                 rewardPerNode = rewardPerNode > remainGainInETIM ? remainGainInETIM : rewardPerNode;
                 if (rewardPerNode > 0) {
                     nodePerformanceRewards[i] += rewardPerNode;
@@ -224,7 +224,7 @@ contract ETIMNode is ERC721, Ownable, ReentrancyGuard {
     function getCurrentNodePriceInWETH() public view returns (uint256) {
         if (mainContract == address(0)) return 0;
 
-        uint256 wethPriceInUSD = IETIMMain(mainContract).wethPriceInUSD();
+        uint256 wethPriceInUSD = IETIMMain(mainContract).getPriceWethInU();
         if (wethPriceInUSD == 0) return 0;
 
         return (NODE_PRICE_USD * 10 ** 18) / wethPriceInUSD;

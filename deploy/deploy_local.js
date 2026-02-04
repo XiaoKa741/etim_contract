@@ -6,12 +6,12 @@ async function main() {
     const weth = await getWETHContract();
     const usdcAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
-    const [deployer, marketInfra, ecoFund, communityFund, ethFoundation, airdrop, t1, t2, t3, t4, t5, t6] = await ethers.getSigners();
+    const [deployer, marketInfra, ecoFund, communityFund, airdrop, ethFoundation, t1, t2, t3, t4, t5, t6] = await ethers.getSigners();
     console.log("部署者地址:", deployer.address);
     console.log("部署者余额:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH", ethers.formatEther(await weth.balanceOf(deployer.address)), "WETH");
 
     // Uniswap V2
-    const { router, factoryAddress, wethAddress } = await setupUniswapV2Pair();
+    const { router, factoryAddress, wethAddress } = await getUniswapV2Router();
 
     // ========== 1. 部署ETIM代币合约 ==========
     console.log("\n1. 部署ETIM代币合约...");
@@ -26,6 +26,7 @@ async function main() {
     console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(marketInfra.address)), "ETIM");
     console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(ecoFund.address)), "ETIM");
     console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(communityFund.address)), "ETIM");
+    console.log("代币总量 airdrop:", ethers.formatEther(await etimToken.balanceOf(airdrop.address)), "ETIM");
     console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(ethFoundation.address)), "ETIM");
 
     // ========== 2. 部署节点合约 ==========
@@ -38,7 +39,7 @@ async function main() {
     console.log("节点合约地址:", etimNodeAddress);
 
     // 创建交易对ETIM/WETH
-    const pairAddress = await createPairAndAddLiquidity(etimTokenAddress, "ETIM", factoryAddress, wethAddress);
+    const pairAddress = await createPair(etimTokenAddress, "ETIM", factoryAddress, wethAddress);
     if (!pairAddress) {
         console.log("\n 创建交易对失败, 退出");
         return;
@@ -46,8 +47,8 @@ async function main() {
     console.log("\n交易对地址:", pairAddress, "\n");
 
     // 添加流动性
-    const etimAmount = ethers.parseUnits("2", await etimToken.decimals()); // 1000 个代币
-    const wethAmount = ethers.parseEther("0.001"); // 1 WETH
+    const etimAmount = ethers.parseUnits("2000", await etimToken.decimals()); // 1000 个代币
+    const wethAmount = ethers.parseEther("1"); // 1 WETH
     // 发放WETH、ETIMToken
     await transferWethEtimToken(deployer, etimTokenAddress, ethers.parseEther("5000"), ethers.parseEther("10"));
     for (let u of [t1, t2, t3, t4, t5, t6]) {
@@ -72,19 +73,31 @@ async function main() {
     // ========== 4. 设置合约间依赖关系 ==========
     console.log("\n4. 设置合约间依赖关系...");
 
-    // 设置节点合约的主合约地址
-    const nodeTx1 = await etimNode.setMainContract(await etimMain.getAddress());
+    // 设置节点合约关联合约地址
+    let nodeTx1 = await etimNode.setMainContract(await etimMain.getAddress());
     await nodeTx1.wait();
-    console.log("设置节点合约的主合约地址");
+    console.log("【节点合约】设置主合约地址");
 
-    // 设置代币合约的主合约地址
-    const tokenTx1 = await etimToken.setMainContract(await etimMain.getAddress());
+    nodeTx1 = await etimNode.setTokenContract(await etimToken.getAddress());
+    await nodeTx1.wait();
+    console.log("【节点合约】设置代币合约地址");
+
+    // 设置代币合约关联合约地址
+    let tokenTx1 = await etimToken.setMainContract(await etimMain.getAddress());
     await tokenTx1.wait();
-    console.log("设置代币合约的主合约地址");
+    console.log("【代币合约】设置主合约地址");
 
-    const updateTx = await etimMain.updateDailyPrice();
+    tokenTx1 = await etimToken.setNodeContract(await etimNode.getAddress());
+    await tokenTx1.wait();
+    console.log("【代币合约】设置节点合约地址");
+
+    let updateTx = await etimMain.initializeLPPair();
     await updateTx.wait();
-    console.log("更新主合约代币价格");
+    console.log("【主合约】初始化交易对(Market)");
+    updateTx = await etimMain.updateDailyPrice();
+    await updateTx.wait();
+    console.log("【主合约】更新代币价格");
+
 
     // etim/weth代币授权给main合约
     {
@@ -97,25 +110,16 @@ async function main() {
             let approveTx = await etimToken_.approve(etimMain.getAddress(), ethers.MaxUint256);
             await approveTx.wait();
 
-            approveTx = await weth.approve(etimMain.getAddress(), ethers.MaxUint256);
-            await approveTx.wait();
-            console.log("etim/weth代币授权给main成功");
+            // approveTx = await weth.approve(etimMain.getAddress(), ethers.MaxUint256);
+            // await approveTx.wait();
+            console.log("【代币合约】etim代币授权给main成功");
         } catch (e) {
-            console.log("etim/weth代币授权给main失败");
+            console.log("【代币合约】etim代币授权给main失败");
         }
     }
-
-    // ========== 5. 初始化代币分配 ==========
-    // console.log("\n5. 初始化代币分配...");
-
-    // 分配1%到社区建设（0.21亿）
-    // const communityAmount = ethers.parseEther("21000000"); // 0.21亿
-    // const communityAddress = deployer.address; // 实际应该是社区多签地址
-    // await etimToken.transfer(communityAddress, communityAmount);
-    // console.log("分配", ethers.formatEther(communityAmount), "ETIM到社区建设");
 }
 
-async function setupUniswapV2Pair() {
+async function getUniswapV2Router() {
     const [deployer] = await ethers.getSigners();
 
     // Uniswap V2 Router 地址（根据网络选择）
@@ -123,13 +127,6 @@ async function setupUniswapV2Pair() {
         mainnet: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
         goerli: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
         hardhat: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
-    };
-
-    // WETH 地址
-    const WETH_ADDRESS = {
-        mainnet: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-        goerli: "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6",
-        hardhat: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" // 假设在 fork 中使用主网地址
     };
 
     // Router ABI（需要 factory 方法）
@@ -158,7 +155,7 @@ async function setupUniswapV2Pair() {
     return { router, factoryAddress, wethAddress };
 }
 
-async function createPairAndAddLiquidity(tokenAddress, tokenName, factoryAddress, wethAddress) {
+async function createPair(tokenAddress, tokenName, factoryAddress, wethAddress) {
     const [deployer] = await ethers.getSigners();
     console.log("部署者地址:", deployer.address);
 
@@ -179,8 +176,6 @@ async function createPairAndAddLiquidity(tokenAddress, tokenName, factoryAddress
         "function symbol() external view returns (string)",
         "function name() external view returns (string)"
     ];
-
-    const token = new ethers.Contract(tokenAddress, tokenAbi, deployer);
 
     // 4. 检查交易对是否存在
     console.log(`检查 ${tokenName}/WETH 交易对...`);
@@ -243,26 +238,35 @@ async function addLiquidityToPair(router, etimTokenAddress, wethAddress, etimTok
         // 1. 授权 Router 使用代币
         let approveTx = await etimToken.approve(router.getAddress(), ethers.MaxUint256);
         await approveTx.wait();
-        console.log("etim token 授权成功", deployer.address, ethers.formatEther(await etimToken.balanceOf(deployer.address)));
+        console.log("etim授权给router成功", deployer.address, ethers.formatEther(await etimToken.balanceOf(deployer.address)));
 
         // 2. 授权 Router 使用代币
-        approveTx = await weth.approve(router.getAddress(), ethers.MaxUint256);
-        await approveTx.wait();
-        console.log("weth token 授权成功", deployer.address, ethers.formatEther(await weth.balanceOf(deployer.address)));
+        // approveTx = await weth.approve(router.getAddress(), ethers.MaxUint256);
+        // await approveTx.wait();
+        // console.log("weth授权给router成功", deployer.address, ethers.formatEther(await weth.balanceOf(deployer.address)));
 
         // 2. 设置期限（当前时间 + 20分钟）
         const deadline = Math.floor(Date.now() / 1000) + 1200;
 
         // 3. 添加流动性
-        const addLiquidityTx = await router.addLiquidity(
-            etimTokenAddress,       // 代币地址 etim
-            wethAddress,            // 代币地址 weth
-            etimTokenAmount,        // 代币数量 etim
-            wethAmount,             // 代币数量 weth
-            etimTokenAmount * 95n / 100n,  // 最小代币数量（95%）
-            wethAmount * 95n / 100n,       // 最小WETH数量（95%）
-            deployer.address,       // 流动性接收地址
-            deadline                // 截止时间
+        // const addLiquidityTx = await router.addLiquidity(
+        //     etimTokenAddress,       // 代币地址 etim
+        //     wethAddress,            // 代币地址 weth
+        //     etimTokenAmount,        // 代币数量 etim
+        //     wethAmount,             // 代币数量 weth
+        //     etimTokenAmount * 95n / 100n,  // 最小代币数量（95%）
+        //     wethAmount * 95n / 100n,       // 最小WETH数量（95%）
+        //     deployer.address,       // 流动性接收地址
+        //     deadline                // 截止时间
+        // );
+        const addLiquidityTx = await router.addLiquidityETH(
+            etimTokenAddress,
+            etimTokenAmount,
+            etimTokenAmount * 95n / 100n,
+            wethAmount * 95n / 100n,
+            deployer.address,
+            deadline,
+            {value: wethAmount}
         );
 
         const receipt = await addLiquidityTx.wait();
