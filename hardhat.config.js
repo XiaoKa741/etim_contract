@@ -1,4 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-foundry");
 require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -9,7 +10,6 @@ module.exports = {
       enabled: true, // 开启优化器
       runs: 200, // 推荐值：runs越小，部署字节码越小；200是平衡部署/运行的通用值
     },
-    viaIR: true,
   },
   networks: {
     hardhat: {
@@ -21,6 +21,11 @@ module.exports = {
     },
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL,
+      accounts: [process.env.PRIVATE_KEY, process.env.PRIVATE_KEY1],
+    },
+    megaeth: {
+      url: "https://carrot.megaeth.com/rpc",
+      chainId: 6343,
       accounts: [process.env.PRIVATE_KEY, process.env.PRIVATE_KEY1],
     }
   }
