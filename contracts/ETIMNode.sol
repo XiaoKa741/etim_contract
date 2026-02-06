@@ -17,12 +17,6 @@ contract ETIMNode is ERC721Enumerable, Ownable {
         return baseTokenURI;
     }
 
-    function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        _requireOwned(tokenId);
-
-        return bytes(baseTokenURI).length > 0 ? string.concat(baseTokenURI, Strings.toString(tokenId), ".json") : "";
-    }
-
     // 批量mint
     function batchMint(address to, uint256 amount) external onlyOwner {
         require(to != address(0), "Address invalid");
