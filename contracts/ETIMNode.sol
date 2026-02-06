@@ -6,10 +6,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract ETIMNode is ERC721Enumerable, Ownable {
-    // 供应量
     uint256 public constant MAX_SUPPLY = 500;
-    // uri
-    string public baseTokenURI = "https://d2clu30ecxbfyv.cloudfront.net/etimNode/";
+    string public baseTokenURI;
 
     constructor() ERC721("ETIM NODE", "EtimNode") Ownable(msg.sender) {}
 
@@ -17,7 +15,6 @@ contract ETIMNode is ERC721Enumerable, Ownable {
         return baseTokenURI;
     }
 
-    // 批量mint
     function mint(uint256 amount) external {
         require(msg.sender != address(0), "Address invalid");
 
@@ -25,12 +22,10 @@ contract ETIMNode is ERC721Enumerable, Ownable {
         require(currentSupply + amount <= MAX_SUPPLY, "Exceeds max supply");
 
         for(uint256 i = 0; i < amount; i++) {
-            // tokenId 从 1 开始
             _safeMint(msg.sender, currentSupply + i + 1);
         }
     }
 
-    // owner批量mint
     function batchMint(address to, uint256 amount) external onlyOwner {
         require(to != address(0), "Address invalid");
 
@@ -38,12 +33,10 @@ contract ETIMNode is ERC721Enumerable, Ownable {
         require(currentSupply + amount <= MAX_SUPPLY, "Exceeds max supply");
 
         for(uint256 i = 0; i < amount; i++) {
-            // tokenId 从 1 开始
             _safeMint(to, currentSupply + i + 1);
         }
     }
 
-    // 更新uri
     function updateURI(string memory uri) external onlyOwner {
         baseTokenURI = uri;
     }
