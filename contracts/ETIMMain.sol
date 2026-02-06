@@ -6,64 +6,80 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
+import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+
 interface IETIMToken {
     function releaseFromGrowthPool(address to, uint256 amount) external;
     function burnToBlackHole(uint256 amount) external;
     function isGrowthPoolDepleted() external view returns (bool);
-    // function transfer(address to, uint256 amount) external returns (bool);
-    // function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
     function approve(address spender, uint256 amount) external returns (bool);
     function setUniswapV2PairRouter(address router, address pair) external;
 }
 
 interface IETIMNode {
-    function addPerformance(uint256 amount) external;
+    function balanceOf(address owner) external view returns (uint256);
 }
 
-interface IUniswapV2Factory {
-    function createPair(address tokenA, address tokenB) external returns (address pair);
-    function getPair(address tokenA, address tokenB) external view returns (address pair);
-}
+// interface IUniswapV2Factory {
+//     function createPair(address tokenA, address tokenB) external returns (address pair);
+//     function getPair(address tokenA, address tokenB) external view returns (address pair);
+// }
 
-interface IUniswapV2Pair {
-    function token0() external view returns (address);
-    function token1() external view returns (address);
-    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
-}
+// interface IUniswapV2Pair {
+//     function token0() external view returns (address);
+//     function token1() external view returns (address);
+//     function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+// }
 
-interface IUniswapV2Router {
-    function factory() external pure returns (address);
-    function WETH() external pure returns (address);
+// interface IUniswapV2Router {
+//     function factory() external pure returns (address);
+//     function WETH() external pure returns (address);
 
-    // 添加 ETH 流动性
-    function addLiquidityETH(
-        address token,
-        uint amountTokenDesired,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+//     // 添加 ETH 流动性
+//     function addLiquidityETH(
+//         address token,
+//         uint amountTokenDesired,
+//         uint amountTokenMin,
+//         uint amountETHMin,
+//         address to,
+//         uint deadline
+//     ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
     
-    // 用 ETH 买入代币
-    function swapExactETHForTokens(
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external payable returns (uint[] memory amounts);
+//     // 用 ETH 买入代币
+//     function swapExactETHForTokens(
+//         uint amountOutMin,
+//         address[] calldata path,
+//         address to,
+//         uint deadline
+//     ) external payable returns (uint[] memory amounts);
 
-    function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
-}
+//     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
+// }
 
 contract ETIMMain is Ownable, ReentrancyGuard {
+    using StateLibrary for IPoolManager;
+
     IETIMToken public etimToken;
     IETIMNode public etimNode;
-    IUniswapV2Router public uniswapRouter;
-    IUniswapV2Factory public uniswapFactory;
+    // IUniswapV2Router public uniswapRouter;
+    // IUniswapV2Factory public uniswapFactory;
     IERC20 public usdc;
-    address public lpPair;
+    // address public lpPair;
+
+    // Uniswap v4
+    IPoolManager public poolManager;
+    IPositionManager public positionManager;
+    PoolKey public poolKey;      // 池子配置
+    PoolId public poolId;        // 池子唯一标识
 
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
     
@@ -91,6 +107,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     bool public delaySwitch = false; 
     uint256 public delayAssignAmountInU = 0;
     uint256 public delayAssignAmountInETH = 0;
+
+    // 节点
+    uint256 public constant NODE_QUOTA = 300 * 10 ** 6;
+    uint256 public totalPerformancePool;
+    uint256 public lastDistributedPerformance;
     
     // 用户信息
     struct UserInfo {
@@ -160,13 +181,17 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     constructor(
         address _etimToken,
         address _etimNode,
-        address _uniswapRouter,
+        // address _uniswapRouter,
+        address _poolManager,
+        address _positionManager,
         address _usdc
     ) Ownable(msg.sender) {
         etimToken = IETIMToken(_etimToken);
         etimNode = IETIMNode(_etimNode);
-        uniswapRouter = IUniswapV2Router(_uniswapRouter);
-        uniswapFactory = IUniswapV2Factory(IUniswapV2Router(_uniswapRouter).factory());
+        // uniswapRouter = IUniswapV2Router(_uniswapRouter);
+        // uniswapFactory = IUniswapV2Factory(IUniswapV2Router(_uniswapRouter).factory());
+        poolManager = IPoolManager(_poolManager);
+        positionManager = IPositionManager(_positionManager);
         usdc = IERC20(_usdc);
         
         _initializeLevels();
@@ -221,11 +246,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             uint256 lpAmount = (amount * LP_SHARE) / FEE_DENOMINATOR;
             uint256 burnAmount = (amount * BURN_SHARE) / FEE_DENOMINATOR;
             
-            // 1% 给节点（置换成etim）
-            if (nodeAmount > 0) {
-                uint256 nodeEtimAmount = nodeAmount * getPriceWethInEtim();
-                etimNode.addPerformance(nodeEtimAmount);
-            }
             // 69% 加入LP
             if (lpAmount > 0) {
                 _addLiquidity(lpAmount);
@@ -233,6 +253,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             // 30% 置换ETIM并销毁
             if (burnAmount > 0) {
                 _swapAndBurn(burnAmount);
+            }
+            // 1% 给节点（置换成etim）
+            if (nodeAmount > 0) {
+                uint256 nodeEtimAmount = nodeAmount * getPriceWethInEtim();
+
+                totalPerformancePool += nodeEtimAmount;
             }
         }
         
@@ -282,6 +308,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         // 从增长池释放代币
         etimToken.releaseFromGrowthPool(msg.sender, pending);
         
+        // 团队代币更新
+        //
         // 更新用户等级
         _checkAndUpdateLevel(msg.sender);
         
@@ -302,6 +330,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         return etimAmount;
     }
 
+    // Node quota bonus 
+    function _calcNodeQuotaBonusInU(address user) private view returns (uint256) {
+        uint256 amount = etimNode.balanceOf(user);
+        return NODE_QUOTA * amount;
+    }
+
     // 计算待领取奖励（按天来聚合处理）
     function _calculatePendingRewards(address userAddr) private view returns (uint256, uint256) {
         UserInfo storage user = users[userAddr];
@@ -309,9 +343,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (user.participationTime == 0) return (0, 0);
         
         // 使用U本位计算剩余价值
-        uint256 initRemainingValueInU = user.investedValueInU - user.claimedValue;
+        uint256 totalQuotaInU = user.investedValueInU + _calcNodeQuotaBonusInU(userAddr);
+        uint256 initRemainingValueInU = totalQuotaInU - user.claimedValue;
         uint256 remainingValueInU = initRemainingValueInU;
-        if (remainingValueInU == 0) return (0, 0);
+        if (remainingValueInU <= 0) return (0, 0);
 
         // 按照当日整点处理（UTC-0）
         uint256 startTime = user.lastClaimTime / 1 days * 1 days;
@@ -421,80 +456,177 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // }
     
     // LP 流动性池（添加流动性到 ETIM/WETH 池）
-    function _addLiquidity(uint256 ethAmount) private {
-        if (ethAmount == 0) return;
+    // function _addLiquidity(uint256 ethAmount) private {
+    //     if (ethAmount == 0) return;
         
-        // 69%的WETH需要分成两部分：
-        // 然后将ETIM+ETH一起添加到LP池，形成ETIM/ETH交易对
+    //     // 69%的WETH需要分成两部分：
+    //     // 然后将ETIM+ETH一起添加到LP池，形成ETIM/ETH交易对
         
-        uint256 halfEth = ethAmount / 2;
-        uint256 otherHalfEth = ethAmount - halfEth;
+    //     uint256 halfEth = ethAmount / 2;
+    //     uint256 otherHalfEth = ethAmount - halfEth;
         
-        // 记录swap前ETIM余额
-        uint256 initialEtimBalance = etimToken.balanceOf(address(this));
+    //     // 记录swap前ETIM余额
+    //     uint256 initialEtimBalance = etimToken.balanceOf(address(this));
 
-        // 将一半WETH swap成ETIM
-        address[] memory path = new address[](2);
-        path[0] = uniswapRouter.WETH();
-        path[1] = address(etimToken);
+    //     // 将一半WETH swap成ETIM
+    //     address[] memory path = new address[](2);
+    //     path[0] = uniswapRouter.WETH();
+    //     path[1] = address(etimToken);
         
-        try uniswapRouter.swapExactETHForTokens{value: halfEth}(
-            0,
-            path,
-            address(this),
-            block.timestamp + 300
-        ) {
-            // Swap成功，计算获得的ETIM数量
-            uint256 etimReceived = etimToken.balanceOf(address(this)) - initialEtimBalance;
+    //     try uniswapRouter.swapExactETHForTokens{value: halfEth}(
+    //         0,
+    //         path,
+    //         address(this),
+    //         block.timestamp + 300
+    //     ) {
+    //         // Swap成功，计算获得的ETIM数量
+    //         uint256 etimReceived = etimToken.balanceOf(address(this)) - initialEtimBalance;
             
-            // 批准Router使用ETIM和ETH
-            etimToken.approve(address(uniswapRouter), etimReceived);
+    //         // 批准Router使用ETIM和ETH
+    //         // approve 最大值，不用每次调用？？？
+    //         // TODO
+    //         etimToken.approve(address(uniswapRouter), etimReceived);
             
-            // 将ETIM + ETH添加到流动性池，形成ETIM/ETH交易对
-            try uniswapRouter.addLiquidityETH{value: otherHalfEth}(
-                address(etimToken),      // Token ETIM
-                etimReceived,            // ETIM数量
-                etimReceived * 95 / 100, // 最小ETIM（slippage保护）
-                otherHalfEth * 95 / 100, // 最小ETH（slippage保护）
-                address(this),           // LP token接收地址
-                block.timestamp + 300    // 截止时间
-            ) {
-                // 流动性添加成功
-            } catch {
-                // 失败（留在合约/返还）
-            }
-        } catch {
-            // Swap失败
-            // TODO ???
-        }
+    //         // 将ETIM + ETH添加到流动性池，形成ETIM/ETH交易对
+    //         try uniswapRouter.addLiquidityETH{value: otherHalfEth}(
+    //             address(etimToken),      // Token ETIM
+    //             etimReceived,            // ETIM数量
+    //             etimReceived * 95 / 100, // 最小ETIM（slippage保护）
+    //             otherHalfEth * 95 / 100, // 最小ETH（slippage保护）
+    //             address(this),           // LP token接收地址
+    //             block.timestamp + 300    // 截止时间
+    //         ) {
+    //             // 流动性添加成功
+    //         } catch {
+    //             // 失败（留在合约/返还）
+    //         }
+    //     } catch {
+    //         // Swap失败
+    //         // TODO ???
+    //     }
+    // }
+    function _addLiquidity(uint256 ethAmount) private {
+        uint256 halfEth = ethAmount / 2;
+        
+        // Swap 一半 ETH → ETIM
+        uint256 etimAmount = _swapEthForEtim(halfEth);
+        
+        // 添加流动性
+        _addLiquidityToPool(ethAmount, etimAmount);
+    }
+
+    // 置换 ETH → ETIM
+    function _swapEthForEtim(uint256 ethAmount) private returns (uint256 etimReceived) {
+        uint256 balanceBefore = etimToken.balanceOf(address(this));
+        
+        // 构建 Actions
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_IN_SINGLE),
+            uint8(Actions.SETTLE_ALL),
+            uint8(Actions.TAKE_ALL)
+        );
+        
+        // 构建参数
+        bytes[] memory params = new bytes[](3);
+        
+        // SWAP_EXACT_IN_SINGLE 参数
+        params[0] = abi.encode(
+            poolKey,
+            true,                // zeroForOne
+            ethAmount,           // amountIn
+            0,                   // amountOutMinimum (滑点保护)
+            bytes("")            // hookData
+        );
+        
+        // SETTLE_ALL 参数 - 支付 ETH
+        params[1] = abi.encode(poolKey.currency0);
+        
+        // TAKE_ALL 参数 - 接收 ETIM
+        params[2] = abi.encode(poolKey.currency1);
+        
+        // 编码 unlockData
+        bytes memory unlockData = abi.encode(actions, params);
+        
+        // 执行交换
+        positionManager.modifyLiquidities{value: ethAmount}(
+            unlockData,
+            block.timestamp + 60
+        );
+
+        // 计算收到的 ETIM
+        etimReceived = etimToken.balanceOf(address(this)) - balanceBefore;
+        
+        return etimReceived;
+    }
+
+    // 双代币添加流动性
+    function _addLiquidityToPool(uint256 ethAmount,uint256 etimAmount) private {
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.MINT_POSITION),
+            uint8(Actions.SETTLE_PAIR)
+        );
+        
+        // 准备金额（ETH/ETIM的情况0一定是ETH）
+        uint256 amount0 = ethAmount;
+        uint256 amount1 = etimAmount;
+        
+        // 构建参数
+        bytes[] memory params = new bytes[](2);
+        
+        // MINT_POSITION 参数
+        params[0] = abi.encode(
+            poolKey,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK,
+            amount0,            // amount0Max
+            amount1,            // amount1Max
+            amount0 * 95 / 100, // amount0Min
+            amount1 * 95 / 100, // amount1Min
+            address(this)       // recipient (合约保留NFT头寸)
+        );
+        
+        // SETTLE_PAIR 参数
+        params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
+        
+        // 执行添加流动性
+        positionManager.modifyLiquidities{value: ethAmount}(
+            abi.encode(actions, params),
+            block.timestamp + 60
+        );
     }
     
     // 置换并销毁
+    // function _swapAndBurn(uint256 ethAmount) private {
+    //     if (ethAmount == 0) return;
+        
+    //     // Swap ETH -> ETIM
+    //     address[] memory path = new address[](2);
+    //     path[0] = uniswapRouter.WETH();
+    //     path[1] = address(etimToken);
+        
+    //     // uint256 minEtimToReceive = _getAmountOutMin(ethAmount, path, 500);
+    //     uint256 initialBalance = etimToken.balanceOf(address(this));
+        
+    //     try uniswapRouter.swapExactETHForTokens{value: ethAmount}(
+    //         0,
+    //         path,
+    //         address(this),
+    //         block.timestamp + 300
+    //     ) {
+    //         uint256 etimReceived = etimToken.balanceOf(address(this)) - initialBalance;
+    //         if (etimReceived > 0) {
+    //             etimToken.burnToBlackHole(etimReceived);
+    //         }
+    //     } catch {
+    //         // Swap失败
+    //         // TODO ???
+    //     }
+    // }
     function _swapAndBurn(uint256 ethAmount) private {
         if (ethAmount == 0) return;
-        
-        // Swap ETH -> ETIM
-        address[] memory path = new address[](2);
-        path[0] = uniswapRouter.WETH();
-        path[1] = address(etimToken);
-        
-        // uint256 minEtimToReceive = _getAmountOutMin(ethAmount, path, 500);
-        uint256 initialBalance = etimToken.balanceOf(address(this));
-        
-        try uniswapRouter.swapExactETHForTokens{value: ethAmount}(
-            0,
-            path,
-            address(this),
-            block.timestamp + 300
-        ) {
-            uint256 etimReceived = etimToken.balanceOf(address(this)) - initialBalance;
-            if (etimReceived > 0) {
-                etimToken.burnToBlackHole(etimReceived);
-            }
-        } catch {
-            // Swap失败
-            // TODO ???
-        }
+
+        uint256 etimToBurn = _swapEthForEtim(ethAmount);
+        etimToken.burnToBlackHole(etimToBurn);
     }
 
     // 池子的输出数量
@@ -520,7 +652,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     // 获取当前价格（USDC per WETH）
     function getPriceWethInU() public returns (uint256) {
-        if (latestTimeWU + 60 < block.timestamp) {
+        if (latestTimeWU + 5 < block.timestamp) {
             uint256 price = _getPriceFromUniswapWethInU();
             if(price > 0) {
                 wethPriceInUSD = price;
@@ -531,50 +663,94 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     }
     
     // Uniswap获取 etim per eth
+    // function _getPriceFromUniswap() private view returns (uint256) {
+    //     IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
+    //     (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+
+    //     uint256 reserveETIM;
+    //     uint256 reserveWETH;
+    //     if (pair.token0() == uniswapRouter.WETH()) {
+    //         reserveWETH = uint256(reserve0);
+    //         reserveETIM = uint256(reserve1);
+    //     } else {
+    //         reserveWETH = uint256(reserve1);
+    //         reserveETIM = uint256(reserve0);
+    //     }
+
+    //     if (reserveWETH > 0) {
+    //         return reserveETIM * 10 ** 18 / reserveWETH;
+    //     }
+    //     return 0;
+    // }
     function _getPriceFromUniswap() private view returns (uint256) {
-        IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
-        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
-
-        uint256 reserveETIM;
-        uint256 reserveWETH;
-        if (pair.token0() == uniswapRouter.WETH()) {
-            reserveWETH = uint256(reserve0);
-            reserveETIM = uint256(reserve1);
+        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(poolId);
+        
+        // 平方并转换为价格
+        uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
+        
+        // 根据代币顺序调整
+        bool isToken0ETIM = Currency.unwrap(poolKey.currency0) == address(etimToken);
+        
+        if (isToken0ETIM) {
+            return ((1 << 192) * 10**18) / priceX192;
         } else {
-            reserveWETH = uint256(reserve1);
-            reserveETIM = uint256(reserve0);
+            return (priceX192 * 10**18) >> 192;
         }
-
-        if (reserveWETH > 0) {
-            return reserveETIM * 10 ** 18 / reserveWETH;
-        }
-        return 0;
     }
 
     // Uniswap获取 usd per eth
-    function _getPriceFromUniswapWethInU() private view returns (uint256) {
-        address[] memory path = new address[](2);
-        path[0] = uniswapRouter.WETH();
-        path[1] = address(usdc);
+    // function _getPriceFromUniswapWethInU() private view returns (uint256) {
+    //     address[] memory path = new address[](2);
+    //     path[0] = uniswapRouter.WETH();
+    //     path[1] = address(usdc);
         
-        try uniswapRouter.getAmountsOut(10**18, path) returns (uint[] memory amounts) {
-            if (amounts.length == 2 && amounts[1] > 0) {
-                return amounts[1]; // USDC数量 per 1 ETH
-            }
-        } catch {}
+    //     try uniswapRouter.getAmountsOut(10**18, path) returns (uint[] memory amounts) {
+    //         if (amounts.length == 2 && amounts[1] > 0) {
+    //             return amounts[1]; // USDC数量 per 1 ETH
+    //         }
+    //     } catch {}
 
+    //     return 0;
+    // }
+    function _getPriceFromUniswapWethInU() private view returns (uint256) {
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),    // Native ETH
+            currency1: Currency.wrap(address(usdc)), // USDC
+            fee: 500,           // 0.5% 费率池
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+
+        // 通过 PoolId 获取 slot0
+        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(key.toId());
+
+        // 计算 1 ETH 换多少 USDC
+        if(sqrtPriceX96 > 0) {
+            return (uint256(sqrtPriceX96) * uint256(sqrtPriceX96) * 1e12) >> 192;
+        }
         return 0;
     }
 
     // LP Pair获取eth余量(etim/eth)
-    function _getEthReserves() public view returns (uint256 ethReserves) {
-        IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
-        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
-        if (pair.token0() == uniswapRouter.WETH()) {
-            ethReserves = uint256(reserve0);
-        } else {
-            ethReserves = uint256(reserve1);
+    // function _getEthReserves() public view returns (uint256 ethReserves) {
+    //     IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
+    //     (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+    //     if (pair.token0() == uniswapRouter.WETH()) {
+    //         ethReserves = uint256(reserve0);
+    //     } else {
+    //         ethReserves = uint256(reserve1);
+    //     }
+    // }
+    function _getEthReserves() public view returns (uint256) {
+        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (liquidity == 0) {
+            return 0;
         }
+        uint256 reserve0 = uint256(liquidity) << 96;    // eth
+        reserve0 = reserve0 / uint256(sqrtPriceX96);
+
+        return reserve0;
     }
     
     // 计算ETIM对应的WETH价值
@@ -817,7 +993,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         // 1% 给节点（置换成etim）
         if (nodeAmount > 0) {
             uint256 nodeEtimAmount = nodeAmount * getPriceWethInEtim();
-            etimNode.addPerformance(nodeEtimAmount);
+
+            totalPerformancePool += nodeEtimAmount;
         }
         
         // 69% 加入LP
@@ -834,19 +1011,39 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     }
 
     // 初始化 LP Pair
-    function initializeLPPair() external onlyOwner {
-        require(lpPair == address(0), "Pair already init");
+    // function initializeLPPair() external onlyOwner {
+    //     require(lpPair == address(0), "Pair already init");
         
-        // 检查是否已存在 ETIM/ETH 交易对
-        address existingPair = uniswapFactory.getPair(address(etimToken), uniswapRouter.WETH());
+    //     // 检查是否已存在 ETIM/ETH 交易对
+    //     address existingPair = uniswapFactory.getPair(address(etimToken), uniswapRouter.WETH());
 
-        if (existingPair == address(0)) {
-            // 创建新的交易对
-            lpPair = uniswapFactory.createPair(address(etimToken), uniswapRouter.WETH());
-        } else {
-            lpPair = existingPair;
-        }
-        etimToken.setUniswapV2PairRouter(address(uniswapRouter), lpPair);
+    //     if (existingPair == address(0)) {
+    //         // 创建新的交易对
+    //         lpPair = uniswapFactory.createPair(address(etimToken), uniswapRouter.WETH());
+    //     } else {
+    //         lpPair = existingPair;
+    //     }
+    //     etimToken.setUniswapV2PairRouter(address(uniswapRouter), lpPair);
+    // }
+    function initializePool(
+        uint24 fee,           // 费率：3000 = 0.3%
+        int24 tickSpacing,    // tick间距：60
+        uint160 sqrtPriceX96  // 初始价格（平方根格式）
+    ) external onlyOwner {
+        // 构建 PoolKey
+        poolKey = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(etimToken)),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(0))
+        });
+        
+        poolId = poolKey.toId();
+        poolManager.initialize(poolKey, sqrtPriceX96);
+
+        // approve
+        etimToken.approve(address(positionManager), type(uint256).max);
     }
 
     // 原生代币转入合约触发
