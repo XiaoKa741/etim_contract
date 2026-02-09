@@ -12,7 +12,7 @@ interface IETIMPoolManager {
     function getPriceEtimPerEth() external view returns (uint256);
     function getPriceUsdcPerEth() external view returns (uint256);
     // function addLiquidity(uint256 ethAmount, uint256 etimAmount) external payable;
-    // function swapEthToEtim(uint256 ethAmount) external payable returns (uint256);
+    function swapEthToEtim(uint256 ethAmount) external payable returns (uint256);
     function swapAndAddLiquidity(uint256 ethAmount) external payable;
     function swapAndBurn(uint256 ethAmount) external payable;
     function take(uint256 etimAmount, address to) external;
@@ -663,10 +663,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (burnAmount > 0) {
             etimPoolManager.swapAndBurn(burnAmount);
         }
-        // 1% 给节点（置换成etim）
+        // 1% 给节点（置换成etim转入本合约）
         if (nodeAmount > 0) {
-            uint256 nodeEtimAmount = nodeAmount * wethPriceInEtim;
+            uint256 nodeEtimAmount = etimPoolManager.swapEthToEtim{value: nodeAmount}(nodeAmount);
             totalPerformancePool += nodeEtimAmount;
+            _distributePerformance(nodeEtimAmount);
         }
 
         delayAssignAmountInU -= valueInU;

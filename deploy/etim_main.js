@@ -18,10 +18,23 @@ async function main() {
 
     const [deployer, a, b, c, d, e, f] = await ethers.getSigners();
 
-    tx = await etimToken.approve(ETIMPoolAddress, MaxUint256);
-    await tx.wait();
-    tx = await etimPool.connect(deployer).addLiquidity(ethers.parseEther("1"), ethers.parseEther("2000"), {value: ethers.parseEther("1")});
-    await tx.wait();
+    // tx = await etimToken.approve(ETIMPoolAddress, MaxUint256);
+    // await tx.wait();
+    // tx = await etimPool.connect(deployer).addLiquidity(ethers.parseEther("1"), ethers.parseEther("2000"), {value: ethers.parseEther("1")});
+    // await tx.wait();
+    
+    // console.log(ethers.formatEther(await etimToken.balanceOf(deployer.address)));
+    // tx = await etimPool.connect(deployer).swapEthToEtim(ethers.parseEther("1"), {value: ethers.parseEther("1")});
+    // receipt = await tx.wait();
+    // console.log(ethers.formatEther(await etimToken.balanceOf(deployer.address)));
+
+    // tx = await etimPool.connect(deployer).swapAndAddLiquidity(ethers.parseEther("1"), {value: ethers.parseEther("1")});
+    // receipt = await tx.wait();
+
+    tx = await etimPool.connect(deployer).swapAndBurn(ethers.parseEther("1"), {value: ethers.parseEther("1")});
+    receipt = await tx.wait();
+    
+    console.log("【池子管理合约】池子内ETH余量:", ethers.formatEther(await etimPool.getEthReserves()));
 
     // 调整区块时间
     // await updateBlockTime();
@@ -39,7 +52,7 @@ async function main() {
 
     // await participate(deployer, etimMain, weth);
 
-    await participate(a, etimMain, weth);
+    // await participate(a, etimMain, weth);
     // await participate(b, etimMain, weth);
     // await participate(c, etimMain, weth);
     // await participate(d, etimMain, weth);

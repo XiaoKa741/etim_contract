@@ -17,6 +17,7 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract ETIMPoolManager is Ownable, IUnlockCallback {
     using SafeERC20 for IERC20;
@@ -156,14 +157,7 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
         // 从 mainContract 转入 ETIM
         etim.safeTransferFrom(msg.sender, address(this), etimAmount);
 
-        // 获取当前价格和 tick
-        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(etimEthPoolId);
-        require(sqrtPriceX96 > 0, "Pool not initialized");
-
-        int24 range = 2400; // ±10%
-        int24 currentTick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
-        int24 tickLower = ((currentTick - range) / 60) * 60;
-        int24 tickUpper = ((currentTick + range) / 60) * 60;
+        (int24 tickLower, int24 tickUpper) = _getTickRange();
 
         console.log("tick range", uint256(uint24(tickLower)), uint256(uint24(tickUpper)));
 
@@ -187,16 +181,18 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
         emit LiquidityAdded(etimAmount, ethAmount);
     }
 
-    function swapEthToEtim(uint256 ethAmount) external payable onlyMainContract returns (uint256 etimAmount) {
+    function swapEthToEtim(uint256 ethAmount) external payable returns (uint256 etimAmount) {
         require(msg.value >= ethAmount, "Insufficient ETH");
+
+        (int24 tickLower, int24 tickUpper) = _getTickRange();
 
         CallbackData memory data = CallbackData({
             actionType: CallbackType.SWAP,
             sender: msg.sender,
             ethAmount: ethAmount,
             etimAmount: 0,
-            tickLower: 0,
-            tickUpper: 0
+            tickLower: tickLower,
+            tickUpper: tickUpper
         });
 
         bytes memory result = poolManager.unlock(abi.encode(data));
@@ -207,32 +203,36 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
     }
 
     // swap then add liquidity
-    function swapAndAddLiquidity(uint256 ethAmount) external payable onlyMainContract {
+    function swapAndAddLiquidity(uint256 ethAmount) external payable {
         require(msg.value >= ethAmount, "Insufficient ETH");
+
+       (int24 tickLower, int24 tickUpper) = _getTickRange();
 
         CallbackData memory data = CallbackData({
             actionType: CallbackType.SWAP_AND_ADD_LIQUIDITY,
             sender: msg.sender,
             ethAmount: ethAmount,
             etimAmount: 0,
-            tickLower: 0,
-            tickUpper: 0
+            tickLower: tickLower,
+            tickUpper: tickUpper
         });
 
         poolManager.unlock(abi.encode(data));
     }
 
     // swap then burn
-    function swapAndBurn(uint256 ethAmount) external payable onlyMainContract {
+    function swapAndBurn(uint256 ethAmount) external payable {
         require(msg.value >= ethAmount, "Insufficient ETH");
+
+        (int24 tickLower, int24 tickUpper) = _getTickRange();
 
         CallbackData memory data = CallbackData({
             actionType: CallbackType.SWAP_AND_BURN,
             sender: msg.sender,
             ethAmount: ethAmount,
             etimAmount: 0,
-            tickLower: 0,
-            tickUpper: 0
+            tickLower: tickLower,
+            tickUpper: tickUpper
         });
 
         poolManager.unlock(abi.encode(data));
@@ -245,6 +245,8 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
         require(msg.sender == address(poolManager), "Only PoolManager");
 
         CallbackData memory data = abi.decode(rawData, (CallbackData));
+
+        console.log("unlockCallback", data.ethAmount, data.etimAmount);
 
         if (data.actionType == CallbackType.ADD_LIQUIDITY) {
             return _handleAddLiquidity(data);
@@ -273,6 +275,8 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
             data.etimAmount      // amount1 (ETIM)
         );
 
+        console.log("[_handleAddLiquidity] liquidity", liquidity);
+
         ModifyLiquidityParams memory params = ModifyLiquidityParams({
             tickLower: data.tickLower,
             tickUpper: data.tickUpper,
@@ -280,7 +284,11 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
             salt: bytes32(0)
         });
 
+        console.log("[_handleAddLiquidity] poolManager.modifyLiquidity");
+
         (BalanceDelta delta, ) = poolManager.modifyLiquidity(etimEthPoolKey, params, "");
+
+        console.log("[_handleAddLiquidity]", Strings.toStringSigned(int256(delta.amount0())), Strings.toStringSigned(int256(delta.amount1())));
 
         // settle delta. eth is token0, etim is token1
         if (delta.amount0() < 0) {
@@ -354,25 +362,20 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
             poolManager.take(etimEthPoolKey.currency1, address(this), etimReceived);
         }
 
-        // add liquidity
         (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(etimEthPoolId);
-        
-        int24 range = 2400;
-        int24 currentTick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
-        int24 tickLower = ((currentTick - range) / 60) * 60;
-        int24 tickUpper = ((currentTick + range) / 60) * 60;
 
+        // add liquidity
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(tickLower),
-            TickMath.getSqrtPriceAtTick(tickUpper),
+            TickMath.getSqrtPriceAtTick(data.tickLower),
+            TickMath.getSqrtPriceAtTick(data.tickUpper),
             liquidityEthAmount,
             etimReceived
         );
 
         ModifyLiquidityParams memory liquidityParams = ModifyLiquidityParams({
-            tickLower: tickLower,
-            tickUpper: tickUpper,
+            tickLower: data.tickLower,
+            tickUpper: data.tickUpper,
             liquidityDelta: int256(uint256(liquidity)),
             salt: bytes32(0)
         });
@@ -407,6 +410,8 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
         });
 
         BalanceDelta delta = poolManager.swap(etimEthPoolKey, params, "");
+
+        console.log("[_handleSwapAndBurn]", Strings.toStringSigned(int256(delta.amount0())), Strings.toStringSigned(int256(delta.amount1())));
         
         if (delta.amount0() < 0) {
             _settleETH(uint128(-delta.amount0()));
@@ -429,6 +434,8 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
     // pay eth to poolmanager
     function _settleETH(uint256 amount) internal {
         poolManager.settle{value: amount}();
+
+        console.log("_settleETH", amount);
     }
 
     // pay etim to poolmanager
@@ -437,17 +444,43 @@ contract ETIMPoolManager is Ownable, IUnlockCallback {
         if (currentAllowance < amount) {
            etim.safeIncreaseAllowance(address(poolManager), amount - currentAllowance);
         }
+        poolManager.sync(etimEthPoolKey.currency1);
+        etim.transfer(address(poolManager), amount);
         poolManager.settle();
+
+        console.log("_settleETIM", amount);
     }
 
     // take eth from poolmanager
     function _takeETH(uint256 amount) internal {
         poolManager.take(etimEthPoolKey.currency0, address(this), amount);
+
+        console.log("_takeETH", amount);
     }
 
     // take etim from poolmanager
     function _takeETIM(uint256 amount) internal {
         poolManager.take(etimEthPoolKey.currency1, address(this), amount);
+
+        console.log("_takeETIM", amount);
+    }
+
+    function _getTickRange() internal view returns (int24, int24) {
+        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(etimEthPoolId);
+        require(sqrtPriceX96 > 0, "Pool not initialized");
+
+        int24 range = 2400; // ±10%
+        int24 currentTick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+        int24 tickLower = ((currentTick - range) / 60) * 60;
+        int24 tickUpper = ((currentTick + range) / 60) * 60;
+        if(tickLower < TickMath.MIN_TICK || tickLower > TickMath.MAX_TICK) {
+            tickLower = TickMath.MIN_TICK;
+        }
+        if(tickUpper < TickMath.MIN_TICK || tickUpper > TickMath.MAX_TICK) {
+            tickUpper = TickMath.MAX_TICK;
+        }
+
+        return (tickLower, tickUpper);
     }
 
     /* ========== ADMIN FUNCTIONS ========== */
