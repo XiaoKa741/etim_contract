@@ -4,84 +4,29 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {IPositionManager} from "@uniswap/v4-periphery/src/interfaces/IPositionManager.sol";
-import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-
-interface IETIMToken {
-    function releaseFromGrowthPool(address to, uint256 amount) external;
-    function burnToBlackHole(uint256 amount) external;
-    function isGrowthPoolDepleted() external view returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function setUniswapV2PairRouter(address router, address pair) external;
+interface IETIMPoolManager {
+    function getEthReserves() external view returns (uint256);
+    function getPriceEtimPerEth() external view returns (uint256);
+    function getPriceUsdcPerEth() external view returns (uint256);
+    // function addLiquidity(uint256 ethAmount, uint256 etimAmount) external payable;
+    // function swapEthToEtim(uint256 ethAmount) external payable returns (uint256);
+    function swapAndAddLiquidity(uint256 ethAmount) external payable;
+    function swapAndBurn(uint256 ethAmount) external payable;
+    function take(uint256 etimAmount, address to) external;
 }
-
-interface IETIMNode {
-    function balanceOf(address owner) external view returns (uint256);
-}
-
-// interface IUniswapV2Factory {
-//     function createPair(address tokenA, address tokenB) external returns (address pair);
-//     function getPair(address tokenA, address tokenB) external view returns (address pair);
-// }
-
-// interface IUniswapV2Pair {
-//     function token0() external view returns (address);
-//     function token1() external view returns (address);
-//     function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
-// }
-
-// interface IUniswapV2Router {
-//     function factory() external pure returns (address);
-//     function WETH() external pure returns (address);
-
-//     // 添加 ETH 流动性
-//     function addLiquidityETH(
-//         address token,
-//         uint amountTokenDesired,
-//         uint amountTokenMin,
-//         uint amountETHMin,
-//         address to,
-//         uint deadline
-//     ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
-    
-//     // 用 ETH 买入代币
-//     function swapExactETHForTokens(
-//         uint amountOutMin,
-//         address[] calldata path,
-//         address to,
-//         uint deadline
-//     ) external payable returns (uint[] memory amounts);
-
-//     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
-// }
 
 contract ETIMMain is Ownable, ReentrancyGuard {
-    using StateLibrary for IPoolManager;
-
-    IETIMToken public etimToken;
-    IETIMNode public etimNode;
-    // IUniswapV2Router public uniswapRouter;
-    // IUniswapV2Factory public uniswapFactory;
-    IERC20 public usdc;
-    // address public lpPair;
-
-    // Uniswap v4
-    IPoolManager public poolManager;
-    IPositionManager public positionManager;
-    PoolKey public poolKey;      // 池子配置
-    PoolId public poolId;        // 池子唯一标识
+    IERC20 public etimToken;
+    IERC721 public etimNode;
+    IETIMPoolManager public etimPoolManager;
 
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+    
+    // grow pool etim amount
+    uint256 public constant GROWTH_POOL = 1_925_700_000 * 10 ** 18;
     
     // 基础参数（可由owner调整）
     uint256 public participationAmountMin = 100 * 10**6; // 100U
@@ -111,7 +56,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // 节点
     uint256 public constant NODE_QUOTA = 300 * 10 ** 6;
     uint256 public totalPerformancePool;
-    uint256 public lastDistributedPerformance;
+    uint256 public rewardPerNode;       // 当前每个节点可领的奖励
+    uint256 public totalActiveNode;     // 当前已激活的节点数量
     
     // 用户信息
     struct UserInfo {
@@ -123,6 +69,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 directReferrals; // 直推人数
         uint256 teamTokenAmount; // 团队币量（不包含自己）
         uint8 level; // 等级 S0-S7
+
+        uint256 nodeAmount;     // 上次同步时的节点数量
+        uint256 nodeRewarded;   // 已计入的节点奖励
+        uint256 pendingRewards; // 待领取的奖励
     }
     
     // 每日价格记录（ETIM/WETH）
@@ -148,6 +98,9 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public dailyDepositAmount = 0;
     // 当日时间记录
     uint256 public dailyDepositDay = 0;
+
+    // 增长池已释放数量
+    uint256 public growthPoolReleased;
     
     // 等级要求
     struct LevelCondition {
@@ -181,19 +134,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     constructor(
         address _etimToken,
         address _etimNode,
-        // address _uniswapRouter,
-        address _poolManager,
-        address _positionManager,
-        address _usdc
+        address _etimPoolManager
     ) Ownable(msg.sender) {
-        etimToken = IETIMToken(_etimToken);
-        etimNode = IETIMNode(_etimNode);
-        // uniswapRouter = IUniswapV2Router(_uniswapRouter);
-        // uniswapFactory = IUniswapV2Factory(IUniswapV2Router(_uniswapRouter).factory());
-        poolManager = IPoolManager(_poolManager);
-        positionManager = IPositionManager(_positionManager);
-        usdc = IERC20(_usdc);
-        
+        etimToken = IERC20(_etimToken);
+        etimNode = IERC721(_etimNode);
+        etimPoolManager = IETIMPoolManager(_etimPoolManager);
+
         _initializeLevels();
     }
     
@@ -216,7 +162,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     // 参与逻辑函数
     function _processParticipation(address addr, uint256 amount) private {
-        require(users[addr].directReferrals == 0, "No binding found");
+        require(users[addr].directReferrals > 0, "No binding found");
 
         // 检查并重置当日eth deposit
         uint256 currentDay = block.timestamp / 1 days;
@@ -225,16 +171,18 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             dailyDepositAmount = 0;
         }
         require(dailyDepositAmount <= dailyDepositMax * dailyDepositRate / 1000, "Daily deposit limit");
+
+        // 更新价格
+        refreshPriceWethInU();
+        refreshPriceWethInEtim();
+
         // 计算投入价值（U本位）
-        uint256 perWethInU = getPriceWethInU();
-        uint256 requiredMinEth = (participationAmountMin * 10 ** 18) / perWethInU;
-        uint256 requiredMaxEth = (participationAmountMax * 10 ** 18) / perWethInU;
+        uint256 requiredMinEth = (participationAmountMin * 10 ** 18) / wethPriceInUSD;
+        uint256 requiredMaxEth = (participationAmountMax * 10 ** 18) / wethPriceInUSD;
         require(amount >= requiredMinEth && amount <= requiredMaxEth, "Invalid transfer amount");
         
         // 投入等值的U数量
-        uint256 participationAmount = amount * perWethInU / 10 ** 18;
-
-        // amount 需要处理为ETIM ？？？？？？？？
+        uint256 participationAmount = amount * wethPriceInUSD / 10 ** 18;
 
         // 开启了延迟注入则记录数据即可
         if(delaySwitch) {
@@ -248,16 +196,16 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             
             // 69% 加入LP
             if (lpAmount > 0) {
-                _addLiquidity(lpAmount);
+                uint256 halfEth = lpAmount / 2;
+                etimPoolManager.swapAndAddLiquidity{value: lpAmount}(halfEth);
             }
             // 30% 置换ETIM并销毁
             if (burnAmount > 0) {
-                _swapAndBurn(burnAmount);
+                etimPoolManager.swapAndBurn(burnAmount);
             }
             // 1% 给节点（置换成etim）
             if (nodeAmount > 0) {
-                uint256 nodeEtimAmount = nodeAmount * getPriceWethInEtim();
-
+                uint256 nodeEtimAmount = nodeAmount * wethPriceInEtim;
                 totalPerformancePool += nodeEtimAmount;
             }
         }
@@ -306,7 +254,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         user.lastClaimTime = block.timestamp;
         
         // 从增长池释放代币
-        etimToken.releaseFromGrowthPool(msg.sender, pending);
+        releaseFromGrowthPool(address(this), pending);
         
         // 团队代币更新
         //
@@ -328,12 +276,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 etimAmount = valueInU * currentEtimPriceInU / 10**6;
 
         return etimAmount;
-    }
-
-    // Node quota bonus 
-    function _calcNodeQuotaBonusInU(address user) private view returns (uint256) {
-        uint256 amount = etimNode.balanceOf(user);
-        return NODE_QUOTA * amount;
     }
 
     // 计算待领取奖励（按天来聚合处理）
@@ -455,312 +397,30 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     //     }
     // }
     
-    // LP 流动性池（添加流动性到 ETIM/WETH 池）
-    // function _addLiquidity(uint256 ethAmount) private {
-    //     if (ethAmount == 0) return;
-        
-    //     // 69%的WETH需要分成两部分：
-    //     // 然后将ETIM+ETH一起添加到LP池，形成ETIM/ETH交易对
-        
-    //     uint256 halfEth = ethAmount / 2;
-    //     uint256 otherHalfEth = ethAmount - halfEth;
-        
-    //     // 记录swap前ETIM余额
-    //     uint256 initialEtimBalance = etimToken.balanceOf(address(this));
-
-    //     // 将一半WETH swap成ETIM
-    //     address[] memory path = new address[](2);
-    //     path[0] = uniswapRouter.WETH();
-    //     path[1] = address(etimToken);
-        
-    //     try uniswapRouter.swapExactETHForTokens{value: halfEth}(
-    //         0,
-    //         path,
-    //         address(this),
-    //         block.timestamp + 300
-    //     ) {
-    //         // Swap成功，计算获得的ETIM数量
-    //         uint256 etimReceived = etimToken.balanceOf(address(this)) - initialEtimBalance;
-            
-    //         // 批准Router使用ETIM和ETH
-    //         // approve 最大值，不用每次调用？？？
-    //         // TODO
-    //         etimToken.approve(address(uniswapRouter), etimReceived);
-            
-    //         // 将ETIM + ETH添加到流动性池，形成ETIM/ETH交易对
-    //         try uniswapRouter.addLiquidityETH{value: otherHalfEth}(
-    //             address(etimToken),      // Token ETIM
-    //             etimReceived,            // ETIM数量
-    //             etimReceived * 95 / 100, // 最小ETIM（slippage保护）
-    //             otherHalfEth * 95 / 100, // 最小ETH（slippage保护）
-    //             address(this),           // LP token接收地址
-    //             block.timestamp + 300    // 截止时间
-    //         ) {
-    //             // 流动性添加成功
-    //         } catch {
-    //             // 失败（留在合约/返还）
-    //         }
-    //     } catch {
-    //         // Swap失败
-    //         // TODO ???
-    //     }
-    // }
-    function _addLiquidity(uint256 ethAmount) private {
-        uint256 halfEth = ethAmount / 2;
-        
-        // Swap 一半 ETH → ETIM
-        uint256 etimAmount = _swapEthForEtim(halfEth);
-        
-        // 添加流动性
-        _addLiquidityToPool(ethAmount, etimAmount);
-    }
-
-    // 置换 ETH → ETIM
-    function _swapEthForEtim(uint256 ethAmount) private returns (uint256 etimReceived) {
-        uint256 balanceBefore = etimToken.balanceOf(address(this));
-        
-        // 构建 Actions
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_IN_SINGLE),
-            uint8(Actions.SETTLE_ALL),
-            uint8(Actions.TAKE_ALL)
-        );
-        
-        // 构建参数
-        bytes[] memory params = new bytes[](3);
-        
-        // SWAP_EXACT_IN_SINGLE 参数
-        params[0] = abi.encode(
-            poolKey,
-            true,                // zeroForOne
-            ethAmount,           // amountIn
-            0,                   // amountOutMinimum (滑点保护)
-            bytes("")            // hookData
-        );
-        
-        // SETTLE_ALL 参数 - 支付 ETH
-        params[1] = abi.encode(poolKey.currency0);
-        
-        // TAKE_ALL 参数 - 接收 ETIM
-        params[2] = abi.encode(poolKey.currency1);
-        
-        // 编码 unlockData
-        bytes memory unlockData = abi.encode(actions, params);
-        
-        // 执行交换
-        positionManager.modifyLiquidities{value: ethAmount}(
-            unlockData,
-            block.timestamp + 60
-        );
-
-        // 计算收到的 ETIM
-        etimReceived = etimToken.balanceOf(address(this)) - balanceBefore;
-        
-        return etimReceived;
-    }
-
-    // 双代币添加流动性
-    function _addLiquidityToPool(uint256 ethAmount,uint256 etimAmount) private {
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.MINT_POSITION),
-            uint8(Actions.SETTLE_PAIR)
-        );
-        
-        // 准备金额（ETH/ETIM的情况0一定是ETH）
-        uint256 amount0 = ethAmount;
-        uint256 amount1 = etimAmount;
-        
-        // 构建参数
-        bytes[] memory params = new bytes[](2);
-        
-        // MINT_POSITION 参数
-        params[0] = abi.encode(
-            poolKey,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK,
-            amount0,            // amount0Max
-            amount1,            // amount1Max
-            amount0 * 95 / 100, // amount0Min
-            amount1 * 95 / 100, // amount1Min
-            address(this)       // recipient (合约保留NFT头寸)
-        );
-        
-        // SETTLE_PAIR 参数
-        params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
-        
-        // 执行添加流动性
-        positionManager.modifyLiquidities{value: ethAmount}(
-            abi.encode(actions, params),
-            block.timestamp + 60
-        );
-    }
-    
-    // 置换并销毁
-    // function _swapAndBurn(uint256 ethAmount) private {
-    //     if (ethAmount == 0) return;
-        
-    //     // Swap ETH -> ETIM
-    //     address[] memory path = new address[](2);
-    //     path[0] = uniswapRouter.WETH();
-    //     path[1] = address(etimToken);
-        
-    //     // uint256 minEtimToReceive = _getAmountOutMin(ethAmount, path, 500);
-    //     uint256 initialBalance = etimToken.balanceOf(address(this));
-        
-    //     try uniswapRouter.swapExactETHForTokens{value: ethAmount}(
-    //         0,
-    //         path,
-    //         address(this),
-    //         block.timestamp + 300
-    //     ) {
-    //         uint256 etimReceived = etimToken.balanceOf(address(this)) - initialBalance;
-    //         if (etimReceived > 0) {
-    //             etimToken.burnToBlackHole(etimReceived);
-    //         }
-    //     } catch {
-    //         // Swap失败
-    //         // TODO ???
-    //     }
-    // }
-    function _swapAndBurn(uint256 ethAmount) private {
-        if (ethAmount == 0) return;
-
-        uint256 etimToBurn = _swapEthForEtim(ethAmount);
-        etimToken.burnToBlackHole(etimToBurn);
-    }
-
-    // 池子的输出数量
-    // function _getAmountOutMin(uint256 amountIn, address[] memory path, uint256 slippageBps) internal view returns (uint256) {
-    //     // 获取当前池子预期的输出数量（输入数量amounts[0]，输出数量amounts[1]）
-    //     uint256[] memory amounts = uniswapRouter.getAmountsOut(amountIn, path);
-    //     // 应用滑点保护（500标识 5%），预期数量 * (10000 - 滑点) / 10000
-    //     return (amounts[1] * (10000 - slippageBps)) / 10000;
-    // }
-    
-    // 获取当前价格（ETIM per WETH）
-    function getPriceWethInEtim() public returns (uint256) {
-        if (latestTimeWE + 60 < block.timestamp) {
-            // 尝试从Uniswap获取
-            uint256 price = _getPriceFromUniswap();
+    // refresh
+    function refreshPriceWethInEtim() private {
+        if (latestTimeWE + 5 < block.timestamp) {
+            uint256 price = etimPoolManager.getPriceEtimPerEth();
             if(price > 0) {
                 wethPriceInEtim = price;
                 latestTimeWE = block.timestamp;
             }
         }
-        return wethPriceInEtim;
     }
 
-    // 获取当前价格（USDC per WETH）
-    function getPriceWethInU() public returns (uint256) {
+    // refresh
+    function refreshPriceWethInU() private {
         if (latestTimeWU + 5 < block.timestamp) {
-            uint256 price = _getPriceFromUniswapWethInU();
+            uint256 price = etimPoolManager.getPriceUsdcPerEth();
             if(price > 0) {
                 wethPriceInUSD = price;
                 latestTimeWU = block.timestamp;
             }
         }
-        return wethPriceInUSD;
     }
     
-    // Uniswap获取 etim per eth
-    // function _getPriceFromUniswap() private view returns (uint256) {
-    //     IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
-    //     (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
-
-    //     uint256 reserveETIM;
-    //     uint256 reserveWETH;
-    //     if (pair.token0() == uniswapRouter.WETH()) {
-    //         reserveWETH = uint256(reserve0);
-    //         reserveETIM = uint256(reserve1);
-    //     } else {
-    //         reserveWETH = uint256(reserve1);
-    //         reserveETIM = uint256(reserve0);
-    //     }
-
-    //     if (reserveWETH > 0) {
-    //         return reserveETIM * 10 ** 18 / reserveWETH;
-    //     }
-    //     return 0;
-    // }
-    function _getPriceFromUniswap() private view returns (uint256) {
-        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(poolId);
-        
-        // 平方并转换为价格
-        uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
-        
-        // 根据代币顺序调整
-        bool isToken0ETIM = Currency.unwrap(poolKey.currency0) == address(etimToken);
-        
-        if (isToken0ETIM) {
-            return ((1 << 192) * 10**18) / priceX192;
-        } else {
-            return (priceX192 * 10**18) >> 192;
-        }
-    }
-
-    // Uniswap获取 usd per eth
-    // function _getPriceFromUniswapWethInU() private view returns (uint256) {
-    //     address[] memory path = new address[](2);
-    //     path[0] = uniswapRouter.WETH();
-    //     path[1] = address(usdc);
-        
-    //     try uniswapRouter.getAmountsOut(10**18, path) returns (uint[] memory amounts) {
-    //         if (amounts.length == 2 && amounts[1] > 0) {
-    //             return amounts[1]; // USDC数量 per 1 ETH
-    //         }
-    //     } catch {}
-
-    //     return 0;
-    // }
-    function _getPriceFromUniswapWethInU() private view returns (uint256) {
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),    // Native ETH
-            currency1: Currency.wrap(address(usdc)), // USDC
-            fee: 500,           // 0.5% 费率池
-            tickSpacing: 60,
-            hooks: IHooks(address(0))
-        });
-
-        // 通过 PoolId 获取 slot0
-        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(key.toId());
-
-        // 计算 1 ETH 换多少 USDC
-        if(sqrtPriceX96 > 0) {
-            return (uint256(sqrtPriceX96) * uint256(sqrtPriceX96) * 1e12) >> 192;
-        }
-        return 0;
-    }
-
-    // LP Pair获取eth余量(etim/eth)
-    // function _getEthReserves() public view returns (uint256 ethReserves) {
-    //     IUniswapV2Pair pair = IUniswapV2Pair(lpPair);
-    //     (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
-    //     if (pair.token0() == uniswapRouter.WETH()) {
-    //         ethReserves = uint256(reserve0);
-    //     } else {
-    //         ethReserves = uint256(reserve1);
-    //     }
-    // }
-    function _getEthReserves() public view returns (uint256) {
-        (uint160 sqrtPriceX96, , , ) = poolManager.getSlot0(poolId);
-        uint128 liquidity = poolManager.getLiquidity(poolId);
-        if (liquidity == 0) {
-            return 0;
-        }
-        uint256 reserve0 = uint256(liquidity) << 96;    // eth
-        reserve0 = reserve0 / uint256(sqrtPriceX96);
-
-        return reserve0;
-    }
     
-    // 计算ETIM对应的WETH价值
-    // function _getWETHForETIM(uint256 etimAmount) private returns (uint256) {
-    //     uint256 currentPrice = getPriceWethInEtim();
-    //     if (currentPrice == 0) return 0;
-    //     return (etimAmount * 10**18) / currentPrice;
-    // }
-    
-    // 代币转账回调
+    // etim transfer callback (trigger by etim token)
     function procTokenTransfer(
         address from,
         address to,
@@ -921,7 +581,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     
     // 调整参数（U数量）
     function setParticipationAmount(uint256 min, uint256 max) external onlyOwner {
-        // require(min > 0 && min <= max, "Params invalid");
+        require(min > 0 && min <= max, "Params invalid");
         participationAmountMin = min;
         participationAmountMax = max;
     }
@@ -947,21 +607,21 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 currentDay = block.timestamp / 1 days;
 
         // etim per eth
-        uint256 priceWethPriceInEtim = _getPriceFromUniswap();
-        require(priceWethPriceInEtim > 0, "Price for Etim per Weth error");
+        uint256 priceWethPriceInEtim = etimPoolManager.getPriceEtimPerEth();
+        require(priceWethPriceInEtim > 0, "Price for Etim per Eth error");
         if(priceWethPriceInEtim > 0) {
             wethPriceInEtim = priceWethPriceInEtim;
             latestTimeWE = block.timestamp;
         }
         // usdc per eth
-        uint256 priceWethPriceInUSD = _getPriceFromUniswapWethInU();
-        require(priceWethPriceInUSD > 0, "Price for Etim per Weth error");
+        uint256 priceWethPriceInUSD = etimPoolManager.getPriceUsdcPerEth();
+        require(priceWethPriceInUSD > 0, "Price for Etim per Eth error");
         if(priceWethPriceInUSD > 0) {
             wethPriceInUSD = priceWethPriceInUSD;
             latestTimeWU = block.timestamp;
         }
         // pair中获取eth余量
-        uint256 ethReserves = _getEthReserves();
+        uint256 ethReserves = etimPoolManager.getEthReserves();
         if(currentDay != dailyMaxDay) {
             dailyDepositMax = ethReserves;
         }
@@ -982,68 +642,34 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     function TriggerDelayAssign(uint256 valueInU) external onlyOwner {
         require(valueInU <= delayAssignAmountInU, "Invalid value");
         
+        // 更新价格
+        refreshPriceWethInU();
+        refreshPriceWethInEtim();
+
         // 转等值的WETH
-        uint256 requiredWETH = (valueInU * 10 ** 18) / getPriceWethInU();
+        uint256 requiredWETH = (valueInU * 10 ** 18) / wethPriceInUSD;
 
         // 分配资金(按照WETH来)
         uint256 nodeAmount = (requiredWETH * NODE_SHARE) / FEE_DENOMINATOR;
         uint256 lpAmount = (requiredWETH * LP_SHARE) / FEE_DENOMINATOR;
         uint256 burnAmount = (requiredWETH * BURN_SHARE) / FEE_DENOMINATOR;
 
-        // 1% 给节点（置换成etim）
-        if (nodeAmount > 0) {
-            uint256 nodeEtimAmount = nodeAmount * getPriceWethInEtim();
-
-            totalPerformancePool += nodeEtimAmount;
-        }
-        
         // 69% 加入LP
         if (lpAmount > 0) {
-            _addLiquidity(lpAmount);
+            uint256 halfEth = lpAmount / 2;
+            etimPoolManager.swapAndAddLiquidity{value: lpAmount}(halfEth);
         }
-        
         // 30% 置换ETIM并销毁
         if (burnAmount > 0) {
-            _swapAndBurn(burnAmount);
+            etimPoolManager.swapAndBurn(burnAmount);
+        }
+        // 1% 给节点（置换成etim）
+        if (nodeAmount > 0) {
+            uint256 nodeEtimAmount = nodeAmount * wethPriceInEtim;
+            totalPerformancePool += nodeEtimAmount;
         }
 
         delayAssignAmountInU -= valueInU;
-    }
-
-    // 初始化 LP Pair
-    // function initializeLPPair() external onlyOwner {
-    //     require(lpPair == address(0), "Pair already init");
-        
-    //     // 检查是否已存在 ETIM/ETH 交易对
-    //     address existingPair = uniswapFactory.getPair(address(etimToken), uniswapRouter.WETH());
-
-    //     if (existingPair == address(0)) {
-    //         // 创建新的交易对
-    //         lpPair = uniswapFactory.createPair(address(etimToken), uniswapRouter.WETH());
-    //     } else {
-    //         lpPair = existingPair;
-    //     }
-    //     etimToken.setUniswapV2PairRouter(address(uniswapRouter), lpPair);
-    // }
-    function initializePool(
-        uint24 fee,           // 费率：3000 = 0.3%
-        int24 tickSpacing,    // tick间距：60
-        uint160 sqrtPriceX96  // 初始价格（平方根格式）
-    ) external onlyOwner {
-        // 构建 PoolKey
-        poolKey = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(etimToken)),
-            fee: fee,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
-        });
-        
-        poolId = poolKey.toId();
-        poolManager.initialize(poolKey, sqrtPriceX96);
-
-        // approve
-        etimToken.approve(address(positionManager), type(uint256).max);
     }
 
     // 原生代币转入合约触发
@@ -1056,4 +682,101 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // fallback() external payable {
     //     revert("This contract only accepts pure ETH transfers.");
     // }
+
+    /* ========== NODE ========== */
+
+    // node quota bonus 
+    function _calcNodeQuotaBonusInU(address user) private view returns (uint256) {
+        uint256 amount = etimNode.balanceOf(user);
+        return NODE_QUOTA * amount;
+    }
+
+    //
+    function _distributePerformance(uint256 etimAmount) internal {
+        totalPerformancePool += etimAmount;
+        if (totalActiveNode > 0) {
+            rewardPerNode += etimAmount / totalActiveNode;
+        }
+    }
+
+    // sync user nodes and settle rewards
+    function _syncUserNodes(address user) internal {
+        UserInfo storage userInfo = users[user];
+
+        // check condition for update
+        if (userInfo.participationTime == 0) {
+            return;
+        }
+
+        uint256 oldNodeAmount = userInfo.nodeAmount;
+        uint256 newNodeAmount = userInfo.level >= 1 ? etimNode.balanceOf(user) : 0;
+
+        if (oldNodeAmount == newNodeAmount) {
+            // settle
+            uint256 accumulateOld = rewardPerNode * oldNodeAmount;
+            uint256 pendingOld = accumulateOld > userInfo.nodeRewarded ? accumulateOld - userInfo.nodeRewarded : 0;
+
+            userInfo.pendingRewards += pendingOld;
+            userInfo.nodeRewarded = accumulateOld;
+            return;
+        }
+
+        if (oldNodeAmount > 0) {
+            // settle
+            uint256 accumulateOld = rewardPerNode * oldNodeAmount;
+            uint256 pendingOld = accumulateOld > userInfo.nodeRewarded ? accumulateOld - userInfo.nodeRewarded : 0;
+
+            userInfo.pendingRewards += pendingOld;
+            userInfo.nodeRewarded = accumulateOld;
+        }
+
+        // update active node amount
+        if (oldNodeAmount > 0) totalActiveNode -= oldNodeAmount;
+        if (newNodeAmount > 0) totalActiveNode += newNodeAmount;
+
+        // reset
+        userInfo.nodeAmount = newNodeAmount;
+        userInfo.nodeRewarded = rewardPerNode * newNodeAmount;
+    }
+
+    // user need real-time sync node nft
+    function syncNode() external {
+        _syncUserNodes(msg.sender);
+    }
+
+    // claim node rewards
+    function claimNodeReward() external nonReentrant {
+        address user = msg.sender;
+        _syncUserNodes(user);
+
+        UserInfo storage userInfo = users[user];
+        uint256 amount = userInfo.pendingRewards;
+
+        // require(userInfo.nodeAmount > 0, "No nodes");
+        require(amount > 0, "No rewards to claim");
+
+        userInfo.pendingRewards = 0;
+
+        etimPoolManager.take(amount, user);
+    }
+
+    /* ========== TOKEN ========== */
+
+    // rease from growth pool
+    function releaseFromGrowthPool(address to, uint256 amount) internal {
+        require(growthPoolReleased + amount <= GROWTH_POOL, "Exceeds growth pool");
+        
+        growthPoolReleased += amount;
+        etimToken.transfer(to, amount);
+    }
+
+    // growth pool remain etim amount
+    function remainingGrowthPool() external view returns (uint256) {
+        return GROWTH_POOL - growthPoolReleased;
+    }
+
+    // growth pool all released
+    function isGrowthPoolDepleted() public view returns (bool) {
+        return growthPoolReleased >= GROWTH_POOL;
+    }
 }

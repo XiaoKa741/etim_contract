@@ -1,30 +1,37 @@
 // scripts/convertEthToWeth.js
 const { ethers } = require("hardhat");
 const { getWETHContract } = require("./util");
-const { formatEther } = require("ethers");
+const { formatEther, MaxUint256 } = require("ethers");
 
-const ETIMMainAddress = '0xffa7CA1AEEEbBc30C874d32C7e22F052BbEa0429';
-const ETIMTokenAddress = '0xA7c59f010700930003b33aB25a7a0679C860f29c';
-const ETIMNodeAddress = '0xfaAddC93baf78e89DCf37bA67943E1bE8F37Bb8c';
+const ETIMMainAddress = '0x06049D835BAC69e7751CaD2C9Ab1aA88808fc1B3';
+const ETIMTokenAddress = '0x2a75a9AfF7d909002fc458b765CB92F47350464B';
+const ETIMNodeAddress = '0x0753ba18e716B0B4fA42aD0e66FdbBCcA0392A20';
 const WETHAddress = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
+const ETIMPoolAddress = '0x2b761D3d44b48Be4Fec0C4aF895EB549f9e255A3';
 
 async function main() {
     const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
     const etimNode = await ethers.getContractAt("ETIMNode", ETIMNodeAddress);
+    const etimPool = await ethers.getContractAt("ETIMPoolManager", ETIMPoolAddress);
     const weth = await getWETHContract();
 
-    const [deployer, marketInfra, ecoFund, communityFund, airdrop, ethFoundation, a, b, c, d, e, f] = await ethers.getSigners();
+    const [deployer, a, b, c, d, e, f] = await ethers.getSigners();
+
+    tx = await etimToken.approve(ETIMPoolAddress, MaxUint256);
+    await tx.wait();
+    tx = await etimPool.connect(deployer).addLiquidity(ethers.parseEther("1"), ethers.parseEther("2000"), {value: ethers.parseEther("1")});
+    await tx.wait();
 
     // 调整区块时间
     // await updateBlockTime();
 
-    tx = await etimMain.getPriceWethInEtim();
-    await tx.wait();
-    console.log('etim per weth: ', ethers.formatEther(await etimMain.wethPriceInEtim()));
-    tx = await etimMain.getPriceWethInU();
-    await tx.wait();
-    console.log('usdc per weth: ', ethers.formatUnits(await etimMain.wethPriceInUSD(), 6));
+    // tx = await etimMain.getPriceWethInEtim();
+    // await tx.wait();
+    // console.log('etim per weth: ', ethers.formatEther(await etimMain.wethPriceInEtim()));
+    // tx = await etimMain.getPriceWethInU();
+    // await tx.wait();
+    // console.log('usdc per weth: ', ethers.formatUnits(await etimMain.wethPriceInUSD(), 6));
 
     // tx = await etimMain.updateDailyPrice();
     // await tx.wait();
@@ -32,7 +39,7 @@ async function main() {
 
     // await participate(deployer, etimMain, weth);
 
-    // await participate(a, etimMain, weth);
+    await participate(a, etimMain, weth);
     // await participate(b, etimMain, weth);
     // await participate(c, etimMain, weth);
     // await participate(d, etimMain, weth);
@@ -97,7 +104,6 @@ async function main() {
     // console.log(await etimNode.connect(b).totalPerformancePool());
     // console.log(await etimToken.balanceOf(ETIMMainAddress));
 
-    await getPriceFromUniswapV2(WETHAddress, ETIMTokenAddress, ethers.parseEther("0.00001"));
     {
         const provider = ethers.provider;
         const block = await provider.getBlock("latest");
@@ -137,7 +143,7 @@ async function participate(user, etimMain, weth) {
         await getUserInfo(etimMain, user);
 
         // const tx = await etimMain.connect(user).participate();
-        const tx = await etimMain.connect(user).deposit({ value: ethers.parseEther("0.0315") });
+        const tx = await etimMain.connect(user).deposit({ value: ethers.parseEther("0.0637") });
         const receipt = await tx.wait();
         console.log("交易hash", receipt.hash);
     } catch (e) {
@@ -181,50 +187,6 @@ async function getEtimMainStatus(etimMain) {
             console.log("etimMain 参与地址", await etimMain.participants(i));
         }
     } catch (e) {
-    }
-}
-
-async function getPriceFromUniswapV2(tokenInAddr, tokenOutAddr, amountIn) {
-    console.log("=== 从本地分叉网络获取 Uniswap V2 价格 ===");
-    // 1. 获取 provider
-    const provider = ethers.provider;
-
-    // 2. Uniswap V2 Router 地址
-    const UNISWAP_V2_ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
-
-    // 3. Router 合约 ABI（简化版，只需要 getAmountsOut）
-    const ROUTER_ABI = [
-        "function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)"
-    ];
-
-    const router = new ethers.Contract(UNISWAP_V2_ROUTER, ROUTER_ABI, provider);
-
-    // 4. 构建路径
-    const path = [tokenInAddr, tokenOutAddr];
-
-    try {
-        // 5. 获取兑换数量
-        const amounts = await router.getAmountsOut(amountIn, path);
-
-        // 计算价格
-        const price = amounts[1] / amounts[0];
-        const pricePerOne = ethers.formatUnits(amounts[1], 18) / ethers.formatUnits(amounts[0], 18);
-
-        console.log(`输入: ${ethers.formatUnits(amountIn, 18)} WETH`);
-        console.log(`输出: ${ethers.formatUnits(amounts[1], 18)} ETIM`);
-        console.log(`价格: 1 WETH = ${pricePerOne} ETIM`);
-        console.log(`原始数据: ${amounts[1]} ETIM 换 ${amounts[0]} WETH`);
-
-        return {
-            amountIn: amounts[0],
-            amountOut: amounts[1],
-            price: pricePerOne
-        };
-    } catch (error) {
-        console.error("获取价格失败:", error.message);
-        return null;
-    } finally {
-        await getPriceUsdcPerWeth(router);
     }
 }
 

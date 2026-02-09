@@ -14,8 +14,9 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.MAINNET_RPC_URL || "https://rpc.ankr.com/eth/302f0e8421c1f2ea708f47d046ef1770edc1ac6793ce9dc6f99aa7b753e30b35", // 主网 RPC
-        blockNumber: 13945678, // 指定区块（可选）
+        url: process.env.MAINNET_RPC_URL,
+        // blockNumber: 21739000,
+        // blockNumber: 13945678, // 指定区块（可选）
       },
       initialBaseFeePerGas: 0, // 设置为0，这样就不会有基础费用了
     },
@@ -27,6 +28,18 @@ module.exports = {
       url: "https://carrot.megaeth.com/rpc",
       chainId: 6343,
       accounts: [process.env.PRIVATE_KEY, process.env.PRIVATE_KEY1],
-    }
+    },
+    // 以太坊主网配置
+    // mainnet: {
+    //   url: process.env.MAINNET_RPC_URL,
+    //   accounts: [process.env.PRIVATE_KEY],
+    //   gasLimit: 5000000,
+    // },
+  },
+  // etherscan: {
+  //   apiKey: process.env.ETHERSCAN_API_KEY
+  // },
+  sourcify: {
+    enabled: true
   }
 };

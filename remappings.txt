@@ -1,0 +1,2 @@
+permit2/=@uniswap/permit2/
+@uniswap/v4-core/=node_modules/@uniswap/v4-core/
