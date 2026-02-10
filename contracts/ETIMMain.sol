@@ -13,9 +13,9 @@ interface IETIMPoolManager {
     function getPriceUsdcPerEth() external view returns (uint256);
     // function addLiquidity(uint256 ethAmount, uint256 etimAmount) external payable;
     function swapEthToEtim(uint256 ethAmount) external payable returns (uint256);
+    function swapEtimToEth(uint256 etimAmount, address to) external returns (uint256);
     function swapAndAddLiquidity(uint256 ethAmount) external payable;
     function swapAndBurn(uint256 ethAmount) external payable;
-    function take(uint256 etimAmount, address to) external;
 }
 
 contract ETIMMain is Ownable, ReentrancyGuard {
@@ -38,15 +38,19 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public constant LP_SHARE = 690; // 69%
     uint256 public constant BURN_SHARE = 300; // 30%
     uint256 public constant FEE_DENOMINATOR = 1000;
-    
-    // 买卖滑点
+
+    // sell/buy slippage
     uint256 public buySlippage = 30; // 3% = 30/1000
     uint256 public sellSlippage = 30; // 3%  = 30/1000
+    uint256 public slippageToS6S7 = 500; // 50% = 500/1000
+    bool public buyEnabled;
+    bool public sellEnabled;
     
-    // 卖出分配
+    // sell assign
     uint256 public constant SELL_LP = 850; // 85% = 850/1000
     uint256 public constant SELL_BURN = 100; // 10%
     uint256 public constant SELL_NODE = 50; // 5%
+
 
     // 延迟分配
     bool public delaySwitch = false; 
@@ -55,7 +59,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     // 节点
     uint256 public constant NODE_QUOTA = 300 * 10 ** 6;
-    uint256 public totalPerformancePool;
     uint256 public rewardPerNode;       // 当前每个节点可领的奖励
     uint256 public totalActiveNode;     // 当前已激活的节点数量
     
@@ -101,6 +104,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     // 增长池已释放数量
     uint256 public growthPoolReleased;
+
+    // 买/卖手续费
+    uint256 public totalEtimToS6S7;
+    uint256 public totalEtimToOfficial;
     
     // 等级要求
     struct LevelCondition {
@@ -123,6 +130,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // 统计数据
     uint256 public totalUsers;
     uint256 public totalDeposited;
+
+    // MODIFIERS
+    modifier onlyPoolManagerContract () {
+        require(msg.sender == address(etimPoolManager), "Only pool manager contract");
+        _;
+    }
     
     event Participated(address indexed user, uint256 amount);
     event ETIMClaimed(address indexed user, uint256 amount, uint256 uValue);
@@ -203,10 +216,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             if (burnAmount > 0) {
                 etimPoolManager.swapAndBurn(burnAmount);
             }
-            // 1% 给节点（置换成etim）
+            // 1% 给节点（置换成etim转入本合约）
             if (nodeAmount > 0) {
-                uint256 nodeEtimAmount = nodeAmount * wethPriceInEtim;
-                totalPerformancePool += nodeEtimAmount;
+                uint256 nodeEtimAmount = etimPoolManager.swapEthToEtim{value: nodeAmount}(nodeAmount);
+                _distributePerformance(nodeEtimAmount);
             }
         }
         
@@ -353,49 +366,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         */
         return (rewardValueInEtim, remainingValueInU >= 0 ? initRemainingValueInU - remainingValueInU : initRemainingValueInU);
     }
-
-    // 买入ETIM
-    // 卖出ETIM
-    // function sellETIM(uint256 etimAmount) external {
-    //     require(etimToken.balanceOf(msg.sender) >= etimAmount, "Insufficient balance");
-        
-    //     // 计算用户应得的ETH（扣除滑点）
-    //     uint256 wethAmount = _getWETHForETIM(etimAmount);
-    //     wethAmount = (wethAmount * (FEE_DENOMINATOR - sellSlippage)) / FEE_DENOMINATOR;
-    //     require(wethAmount > 0, "Invalid price");
-        
-    //     // 检查合约ETH数量
-    //     require(address(this).balance >= wethAmount, "Insufficient ETH");
-
-    //     // 转移ETIM到合约
-    //     require(etimToken.transferFrom(msg.sender, address(this), etimAmount), "Transfer failed");
-    //     // 转账ETH给用户
-    //     (bool success, ) = payable(msg.sender).call{value: wethAmount}("");
-    //     require(success, "ETH transfer failed");
-        
-    //     emit TokenSold(msg.sender, etimAmount, wethAmount);
-        
-    //     // 计算分配
-    //     uint256 lpAmount = (etimAmount * SELL_LP) / FEE_DENOMINATOR;
-    //     uint256 burnAmount = (etimAmount * SELL_BURN) / FEE_DENOMINATOR;
-    //     uint256 nodeAmount = (etimAmount * SELL_NODE) / FEE_DENOMINATOR;
-        
-    //     // 85% 去LP
-    //     if (lpAmount > 0) {
-    //         etimToken.transfer(lpPair, lpAmount);
-    //     }
-        
-    //     // 10% 销毁
-    //     if (burnAmount > 0) {
-    //         etimToken.burnToBlackHole(burnAmount);
-    //     }
-        
-    //     // 5% 参与节点业绩分配
-    //     if (nodeAmount > 0) {
-    //         uint256 nodeValueInWeth = _getWETHForETIM(nodeAmount);
-    //         etimNode.addPerformance(nodeValueInWeth);
-    //     }
-    // }
     
     // refresh
     function refreshPriceWethInEtim() private {
@@ -666,7 +636,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         // 1% 给节点（置换成etim转入本合约）
         if (nodeAmount > 0) {
             uint256 nodeEtimAmount = etimPoolManager.swapEthToEtim{value: nodeAmount}(nodeAmount);
-            totalPerformancePool += nodeEtimAmount;
             _distributePerformance(nodeEtimAmount);
         }
 
@@ -694,7 +663,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     //
     function _distributePerformance(uint256 etimAmount) internal {
-        totalPerformancePool += etimAmount;
         if (totalActiveNode > 0) {
             rewardPerNode += etimAmount / totalActiveNode;
         }
@@ -758,7 +726,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
         userInfo.pendingRewards = 0;
 
-        etimPoolManager.take(amount, user);
+        etimToken.transfer(user, amount);
     }
 
     /* ========== TOKEN ========== */
@@ -779,5 +747,51 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // growth pool all released
     function isGrowthPoolDepleted() public view returns (bool) {
         return growthPoolReleased >= GROWTH_POOL;
+    }
+
+    /* ========== BUY/SELL ========== */
+    // 买入ETIM
+    function buyETIM() external payable returns (uint256 etimReceived) {
+        require(buyEnabled, "Buy not enable");
+        require(msg.value > 0, "Must send ETH");
+
+        uint256 ethAmount = msg.value;
+        uint256 slippageFee = ethAmount * buySlippage / FEE_DENOMINATOR;    // TO s6、s7
+
+        ethAmount = ethAmount - slippageFee;
+        etimReceived = etimPoolManager.swapEthToEtim{value: ethAmount}(ethAmount);
+
+        etimToken.transfer(msg.sender, etimReceived);
+    }
+
+    // 卖出ETIM
+    function sellETIM(uint256 etimAmount) external returns (uint256 ethReceived){
+        require(etimAmount > 0, "Invalid amount");
+        require(etimToken.balanceOf(msg.sender) >= etimAmount, "Insufficient balance");
+        
+        // 转账（需要用户先授权）
+        etimToken.transferFrom(msg.sender, address(this), etimAmount);
+
+        // uint256 slippageFee = etimAmount * sellSlippage / FEE_DENOMINATOR;
+
+        // 计算分配
+        uint256 lpAmount = (etimAmount * SELL_LP) / FEE_DENOMINATOR;
+        uint256 burnAmount = (etimAmount * SELL_BURN) / FEE_DENOMINATOR;
+        uint256 nodeAmount = (etimAmount * SELL_NODE) / FEE_DENOMINATOR;
+        
+        // 85% 去LP
+        if (lpAmount > 0) {
+            ethReceived = etimPoolManager.swapEtimToEth(lpAmount, msg.sender);
+        }
+        
+        // 10% 销毁
+        if (burnAmount > 0) {
+            etimToken.transfer(BURN_ADDRESS, burnAmount);
+        }
+        
+        // 5% 参与节点业绩分配
+        if (nodeAmount > 0) {
+            _distributePerformance(nodeAmount);
+        }
     }
 }
