@@ -731,7 +731,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     /* ========== TOKEN ========== */
 
-    // rease from growth pool
+    // release from growth pool
     function releaseFromGrowthPool(address to, uint256 amount) internal {
         require(growthPoolReleased + amount <= GROWTH_POOL, "Exceeds growth pool");
         
