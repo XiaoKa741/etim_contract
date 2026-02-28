@@ -7,17 +7,17 @@ module.exports = {
   solidity: "0.8.28",
   settings: {
     optimizer: {
-      enabled: true, // 开启优化器
-      runs: 200, // 推荐值：runs越小，部署字节码越小；200是平衡部署/运行的通用值
-    },
+      enabled: true,
+      runs: 200,
+    }
   },
   networks: {
     hardhat: {
       forking: {
         url: process.env.MAINNET_RPC_URL,
-        // blockNumber: 21739000,
-        // blockNumber: 13945678, // 指定区块（可选）
+        // blockNumber: 24554373, // 指定区块（可选）
       },
+      // timeout: 120000,  // 120秒
       initialBaseFeePerGas: 0, // 设置为0，这样就不会有基础费用了
     },
     sepolia: {

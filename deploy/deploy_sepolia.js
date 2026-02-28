@@ -2,33 +2,33 @@ const { ethers } = require("hardhat");
 const { getWETHContract } = require("./util");
 
 async function main() {
-    const [deployer, deployer1] = await ethers.getSigners();
-
-    const usdcAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
     // weth contract
-    const weth = await getWETHContract(deployer, "0xfff9976782d46cc05630d1f6ebab18b2324d6b14");
-    // await wrapETH();
+    const weth = await getWETHContract(null, "0xfff9976782d46cc05630d1f6ebab18b2324d6b14");
+    const usdcAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+    const poolManagerAddress = "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543";
+    // const positionManagerAddress = "0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e";
 
+    const [deployer, deployer2] = await ethers.getSigners();
     console.log("部署者地址:", deployer.address);
     console.log("部署者余额:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH", ethers.formatEther(await weth.balanceOf(deployer.address)), "WETH");
 
-    // Uniswap V2
-    const { router, factoryAddress, wethAddress } = await getUniswapV2Router();
+    let code = await ethers.provider.getCode(poolManagerAddress);
+    if (code === "0x") {
+        console.error("错误：你的网络中找不到 PoolManager！");
+    }
+
+    const network = await deployer.provider.getNetwork();
+    console.log("当前部署网络 ChainID:", network.chainId);
 
     // ========== 1. 部署ETIM代币合约 ==========
     console.log("\n1. 部署ETIM代币合约...");
     const ETIMToken = await ethers.getContractFactory("ETIMToken");
 
     // 代币参数
-    const etimToken = await ETIMToken.deploy(deployer1.address, deployer1.address, deployer1.address, deployer1.address, deployer1.address);
+    const etimToken = await ETIMToken.deploy();
     await etimToken.waitForDeployment();
     const etimTokenAddress = await etimToken.getAddress();
     console.log("ETIM代币合约地址:", etimTokenAddress);
-    console.log("代币总量 合约:", ethers.formatEther(await etimToken.balanceOf(etimTokenAddress)), "ETIM");
-    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
-    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
-    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
-    console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
 
     // ========== 2. 部署节点合约 ==========
     console.log("\n2. 部署节点NFT合约...");
@@ -39,264 +39,85 @@ async function main() {
     const etimNodeAddress = await etimNode.getAddress();
     console.log("节点合约地址:", etimNodeAddress);
 
-    // 创建交易对ETIM/WETH
-    const pairAddress = await createPair(etimTokenAddress, "ETIM", factoryAddress, wethAddress);
-    if (!pairAddress) {
-        console.log("\n 创建交易对失败, 退出");
-        return;
-    }
-    console.log("\n交易对地址:", pairAddress, "\n");
-
-    // 添加流动性
-    const etimAmount = ethers.parseUnits("2", await etimToken.decimals()); // 1000 个代币
-    const wethAmount = ethers.parseEther("0.001"); // 1 WETH
-    // 发放WETH、ETIMToken
-    await transferWethEtimToken(deployer, etimTokenAddress, ethers.parseEther("5"), ethers.parseEther("0"));
-    for (let u of [deployer1]) {
-        // await transferWethEtimToken(u, etimTokenAddress, ethers.parseEther("5"), ethers.parseEther("0"));
-    }
-    // await transferWethEtimToken(deployer, etimTokenAddress, etimAmount, wethAmount);
-    await addLiquidityToPair(router, etimTokenAddress, wethAddress, etimAmount, wethAmount);
+    // ========== 3. 部署ETH/ETIM代币池合约 ==========
+    console.log("\n3. 部署ETH/ETIM代币池合约...");
+    const ETIMPool = await ethers.getContractFactory("ETIMPoolManager");
+    const etimPool = await ETIMPool.deploy(
+        poolManagerAddress,
+        etimTokenAddress,
+        usdcAddress  
+    );
+    const etimPoolAddress = await etimPool.getAddress();
+    console.log("池子管理合约地址:", etimPoolAddress);
 
     // ========== 3. 部署主合约 ==========
-    console.log("\n3. 部署ETIM主合约...");
+    console.log("\n4. 部署ETIM主合约...");
     const ETIMMain = await ethers.getContractFactory("ETIMMain");
 
     const etimMain = await ETIMMain.deploy(
         etimTokenAddress,
         etimNodeAddress,
-        router,
-        usdcAddress
+        etimPoolAddress,
     );
     await etimMain.waitForDeployment();
-    console.log("主合约地址:", await etimMain.getAddress());
+    const etimMainAddress = await etimMain.getAddress();
+    console.log("主合约地址:", etimMainAddress);
 
-    // ========== 4. 设置合约间依赖关系 ==========
-    console.log("\n4. 设置合约间依赖关系...");
+    // ========== 4. 分配代币 ==========
+    console.log("\n4. 分配代币...");
+    // let tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("1925700000"));
+    let tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("192570000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(deployer2.address, ethers.parseEther("105000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(deployer2.address, ethers.parseEther("21000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(deployer2.address, ethers.parseEther("21000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(deployer2.address, ethers.parseEther("21000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(deployer2.address, ethers.parseEther("6300000"));
+    await tx.wait();
+    
+    console.log("代币总量 grouthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
+    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(deployer2.address)), "ETIM");
+    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(deployer2.address)), "ETIM");
+    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(deployer2.address)), "ETIM");
+    console.log("代币总量 airdrop:", ethers.formatEther(await etimToken.balanceOf(deployer2.address)), "ETIM");
+    console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(deployer2.address)), "ETIM");
 
-    // 设置节点合约关联合约地址
-    let nodeTx1 = await etimNode.setMainContract(await etimMain.getAddress());
-    await nodeTx1.wait();
-    console.log("【节点合约】设置主合约地址");
-
-    nodeTx1 = await etimNode.setTokenContract(await etimToken.getAddress());
-    await nodeTx1.wait();
-    console.log("【节点合约】设置代币合约地址");
+    // ========== 5. 设置合约间依赖关系 ==========
+    console.log("\n5. 设置合约间依赖关系...");
 
     // 设置代币合约关联合约地址
-    let tokenTx1 = await etimToken.setMainContract(await etimMain.getAddress());
-    await tokenTx1.wait();
+    tx = await etimToken.setMainContract(etimMainAddress);
+    await tx.wait();
     console.log("【代币合约】设置主合约地址");
 
-    tokenTx1 = await etimToken.setNodeContract(await etimNode.getAddress());
-    await tokenTx1.wait();
-    console.log("【代币合约】设置节点合约地址");
+    tx = await etimPool.setMainContract(etimMainAddress);
+    await tx.wait();
+    console.log("【池子管理合约】设置主合约地址");
 
-    let updateTx = await etimMain.initializeLPPair();
-    await updateTx.wait();
-    console.log("【主合约】初始化交易对(Market)");
-    updateTx = await etimMain.updateDailyPrice();
-    await updateTx.wait();
+    const priceEtimPerEth = 2000; // 1ETH = 2000ETIM
+    const sqrtPriceX96 = BigInt(Math.floor(Math.sqrt(priceEtimPerEth) * 2 ** 96));
+    tx = await etimPool.initializePool(sqrtPriceX96);
+    await tx.wait();
+    console.log("【池子管理合约】初始化池子价格ETH/ETIM");
+    console.log("【池子管理合约】ETIM per ETH:", ethers.formatEther(await etimPool.getPriceEtimPerEth()));
+    console.log("【池子管理合约】USDC per ETH:", ethers.formatUnits(await etimPool.getPriceUsdcPerEth(), 6));
+    console.log("【池子管理合约】池子内ETH余量:", ethers.formatEther(await etimPool.getEthReserves()));
+
     console.log("【主合约】更新代币价格");
+    tx = await etimMain.updateDailyPrice();
+    await tx.wait();
 
-    // etim/weth代币授权给main合约
-    {
-        const tokenAbi = [
-            "function approve(address spender, uint256 amount) external returns (bool)",
-            "function balanceOf(address guy) public view returns (uint)",
-        ];
-        const etimToken_ = new ethers.Contract(etimTokenAddress, tokenAbi, deployer);
-        try {
-            let approveTx = await etimToken_.approve(etimMain.getAddress(), ethers.MaxUint256);
-            await approveTx.wait();
-
-            // approveTx = await weth.approve(etimMain.getAddress(), ethers.MaxUint256);
-            // await approveTx.wait();
-            console.log("etim代币授权给main成功");
-        } catch (e) {
-            console.log("etim代币授权给main失败");
-        }
-    }
-}
-
-async function getUniswapV2Router() {
-    const [deployer] = await ethers.getSigners();
-
-    // Uniswap V2 Router 地址（根据网络选择）
-    const UNISWAP_V2_ROUTER_ADDRESS = {
-        mainnet: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-        goerli: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-        hardhat: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-        sepolia: "0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3",
-    };
-
-    // Router ABI（需要 factory 方法）
-    const routerAbi = [
-        "function factory() external view returns (address)",
-        "function WETH() external view returns (address)",
-        "function addLiquidityETH(address token, uint amountTokenDesired, uint amountTokenMin, uint amountETHMin, address to, uint deadline) external payable returns (uint amountToken, uint amountETH, uint liquidity)",
-        "function addLiquidity(address tokenA, address tokenB, uint amountADesired, uint amountBDesired, uint amountAMin, uint amountBMin, address to, uint deadline) external returns (uint amountA, uint amountB, uint liquidity)",
-    ];
-
-    // 创建 Router 合约实例
-    const router = new ethers.Contract(
-        UNISWAP_V2_ROUTER_ADDRESS.sepolia, // 根据网络选择
-        routerAbi,
-        deployer
-    );
-
-    // 获取 Factory 地址的正确方式
-    const factoryAddress = await router.factory();
-    console.log("Uniswap V2 Factory 地址:", factoryAddress);
-
-    // 获取 WETH 地址的正确方式
-    const wethAddress = await router.WETH();
-    console.log("WETH 地址:", wethAddress);
-
-    return { router, factoryAddress, wethAddress };
-}
-
-async function createPair(tokenAddress, tokenName, factoryAddress, wethAddress) {
-    const [deployer] = await ethers.getSigners();
-    console.log("部署者地址:", deployer.address);
-
-    // 1. 创建 Factory 合约实例
-    const factoryAbi = [
-        "function getPair(address tokenA, address tokenB) external view returns (address pair)",
-        "function createPair(address tokenA, address tokenB) external returns (address pair)",
-        "event PairCreated(address indexed token0, address indexed token1, address pair, uint)"
-    ];
-
-    const factory = new ethers.Contract(factoryAddress, factoryAbi, deployer);
-
-    // 2. 创建你的代币合约实例
-    const tokenAbi = [
-        "function approve(address spender, uint256 amount) external returns (bool)",
-        "function balanceOf(address account) external view returns (uint256)",
-        "function decimals() external view returns (uint8)",
-        "function symbol() external view returns (string)",
-        "function name() external view returns (string)"
-    ];
-
-    // 4. 检查交易对是否存在
-    console.log(`检查 ${tokenName}/WETH 交易对...`);
-    let pairAddress = await factory.getPair(tokenAddress, wethAddress);
-
-    if (pairAddress === ethers.ZeroAddress) {
-        console.log(`交易对不存在，正在创建... ${tokenAddress}-${wethAddress}`);
-
-        try {
-            // 创建交易对
-            const createPairTx = await factory.createPair(tokenAddress, wethAddress);
-
-            console.log("交易已发送，等待确认...");
-            const receipt = await createPairTx.wait();
-            console.log("交易确认，区块:", receipt.blockNumber);
-
-            // 从事件中获取 pair 地址
-            const pairCreatedEvent = receipt.events?.find(e => e.event === "PairCreated");
-            if (pairCreatedEvent) {
-                pairAddress = pairCreatedEvent.args.pair;
-                console.log("从事件中获取交易对地址:", pairAddress);
-            } else {
-                // 如果事件没找到，再次查询
-                pairAddress = await factory.getPair(tokenAddress, wethAddress);
-                console.log("查询到的交易对地址:", pairAddress);
-            }
-
-            console.log("交易对创建成功!");
-
-        } catch (error) {
-            console.error("创建交易对失败:", error.message);
-
-            // 尝试解析错误
-            if (error.data) {
-                console.log("错误数据:", error.data);
-            }
-            return null;
-        }
-    } else {
-        console.log("交易对已存在:", pairAddress);
-    }
-
-    return pairAddress;
-}
-
-async function addLiquidityToPair(router, etimTokenAddress, wethAddress, etimTokenAmount, wethAmount) {
-    const [deployer] = await ethers.getSigners();
-
-    // 代币合约实例
-    const tokenAbi = [
-        "function approve(address spender, uint256 amount) external returns (bool)",
-        "function balanceOf(address guy) public view returns (uint)",
-    ];
-    const etimToken = new ethers.Contract(etimTokenAddress, tokenAbi, deployer);
-    // const weth = await getWETHContract(deployer, "0xfff9976782d46cc05630d1f6ebab18b2324d6b14");
-
-    console.log("正在添加流动性...");
-
-    try {
-        // 1. 授权 Router 使用代币
-        let approveTx = await etimToken.approve(router.getAddress(), ethers.MaxUint256);
-        await approveTx.wait();
-        console.log("etim授权给router成功", deployer.address, ethers.formatEther(await etimToken.balanceOf(deployer.address)));
-
-        // 2. 授权 Router 使用代币
-        // approveTx = await weth.approve(router.getAddress(), ethers.MaxUint256);
-        // await approveTx.wait();
-        // console.log("weth授权给router成功", deployer.address, ethers.formatEther(await weth.balanceOf(deployer.address)));
-
-        // 2. 设置期限（当前时间 + 20分钟）
-        const deadline = Math.floor(Date.now() / 1000) + 1200;
-
-        // 3. 添加流动性
-        // const addLiquidityTx = await router.addLiquidity(
-        //     etimTokenAddress,       // 代币地址 etim
-        //     wethAddress,            // 代币地址 weth
-        //     etimTokenAmount,        // 代币数量 etim
-        //     wethAmount,             // 代币数量 weth
-        //     etimTokenAmount * 95n / 100n,  // 最小代币数量（95%）
-        //     wethAmount * 95n / 100n,       // 最小WETH数量（95%）
-        //     deployer.address,       // 流动性接收地址
-        //     deadline                // 截止时间
-        // );
-        const addLiquidityTx = await router.addLiquidityETH(
-            etimTokenAddress,
-            etimTokenAmount,
-            etimTokenAmount * 95n / 100n,
-            wethAmount * 95n / 100n,
-            deployer.address,
-            deadline,
-            {value: wethAmount}
-        );
-        
-        const receipt = await addLiquidityTx.wait();
-        console.log("流动性添加成功! 交易哈希:", receipt.hash);
-
-        return receipt;
-
-    } catch (error) {
-        console.error("添加流动性失败:", error.message);
-
-        // 详细错误分析
-        if (error.code === "CALL_EXCEPTION") {
-            console.log("合约调用异常，请检查:");
-            console.log("1. 代币是否已授权给 Router");
-            console.log("2. 账户是否有足够的代币和 ETH");
-            console.log("3. 代币地址是否正确");
-        }
-
-        if (error.data) {
-            console.log("错误数据:", error.data);
-        }
-
-        throw error;
-    }
+    // console.log("【主合约】池子添加流动性 ETIM/ETH");
+    // await injectEthEtimToPool(positionManagerAddress, etimTokenAddress);
 }
 
 async function transferWethEtimToken(user, etimTokenAddress, etimTokenAmount, wethAmount) {
     const [_, marketInfra] = await ethers.getSigners();
-    const weth = await getWETHContract(user, "0xfff9976782d46cc05630d1f6ebab18b2324d6b14");
+    const weth = await getWETHContract(user);
 
     const tokenAbi = [
         "function approve(address spender, uint256 amount) external returns (bool)",
@@ -307,67 +128,143 @@ async function transferWethEtimToken(user, etimTokenAddress, etimTokenAmount, we
     const etimToken = new ethers.Contract(etimTokenAddress, tokenAbi, marketInfra);
 
     try {
-        if (wethAmount > 0) {
-            let tx = await weth.deposit({ value: wethAmount });
-            await tx.wait();
-            console.log("发放 WETH 成功!", ethers.formatEther(await weth.balanceOf(user.address)), user.address);
-        }
+        let tx = await weth.deposit({ value: wethAmount });
+        await tx.wait();
+        console.log("发放 WETH 成功!", ethers.formatEther(await weth.balanceOf(user.address)), user.address);
 
-        if (etimTokenAmount > 0) {
-            tx = await etimToken.transfer(user.address, etimTokenAmount);
-            await tx.wait();
+        tx = await etimToken.transfer(user.address, etimTokenAmount);
+        await tx.wait();
 
-            console.log("发放 ETIM TOKEN 成功!", ethers.formatEther(await etimToken.balanceOf(user.address)), user.address);
-        }
+        console.log("发放 ETIM TOKEN 成功!", ethers.formatEther(await etimToken.balanceOf(user.address)), user.address);
     } catch (error) {
         console.log("转换失败:", error.message);
     }
 }
 
-async function wrapETH() {
-    // 配置
-    const [deployer, deployer1] = await ethers.getSigners();
+async function injectEthEtimToPool(positionManagerAddress, etimTokenAddress) {
+    const [signer] = await ethers.getSigners();
 
-    // WETH ABI（只需要 deposit 函数）
-    const wethABI = [
-        "function deposit() public payable",
-        "function withdraw(uint wad) public",
-        "function balanceOf(address owner) view returns (uint256)"
+    // ===== 配置 =====
+    const POSITION_MANAGER_ADDRESS = positionManagerAddress; // 替换为实际 PositionManager 地址
+    const ETIM_TOKEN_ADDRESS = etimTokenAddress;       // ETIM 代币地址
+    const ETIM_DECIMALS = 18;
+
+    // PoolKey 参数（必须和 initialize 时一致！）
+    const CURRENCY0 = "0x0000000000000000000000000000000000000000"; // ETH
+    const CURRENCY1 = ETIM_TOKEN_ADDRESS;                           // ETIM
+    const FEE = 3000;        // 0.3%
+    const TICK_SPACING = 60; // 必须匹配初始化时的 tickSpacing
+    const HOOKS = "0x0000000000000000000000000000000000000000";    // 无 hooks
+
+    const ETH_AMOUNT = ethers.parseEther("1");
+    const ETIM_AMOUNT = ethers.parseUnits("2000", ETIM_DECIMALS);
+
+    // ===== 获取合约 =====
+    const positionManager = await ethers.getContractAt(
+        "IPositionManager",
+        POSITION_MANAGER_ADDRESS,
+        signer
+    );
+    const etimToken = await ethers.getContractAt("IERC20", ETIM_TOKEN_ADDRESS, signer);
+
+    // ===== 1. 授权 ETIM 给 PositionManager =====
+    console.log("🔑 Approving ETIM to PositionManager...");
+    // const approveTx = await etimToken.approve(POSITION_MANAGER_ADDRESS, ETIM_AMOUNT);
+    const approveTx = await etimToken.approve(POSITION_MANAGER_ADDRESS, ethers.MaxInt256);
+    await approveTx.wait();
+    console.log("✅ Approved");
+
+    // ===== 2. 构建 PoolKey =====
+    const poolKey = {
+        currency0: CURRENCY0,
+        currency1: CURRENCY1,
+        fee: FEE,
+        tickSpacing: TICK_SPACING,
+        hooks: HOOKS
+    };
+
+    // ===== 3. 编码 Actions 和 Params =====
+    const Actions = {
+        MINT_POSITION: 0x02,
+        SETTLE_ALL: 0x0c,
+        TAKE_PAIR: 0x11,
+        SETTLE_PAIR: 0x0d,
+        SWEEP : 0x14
+    };
+
+    const actions = ethers.concat([
+        ethers.toBeHex(Actions.MINT_POSITION, 1),
+        ethers.toBeHex(Actions.SETTLE_PAIR, 1),
+        ethers.toBeHex(Actions.SWEEP, 1),
+        ethers.toBeHex(Actions.SWEEP, 1),
+    ]);
+
+    // const params = [
+    //     // MINT_POSITION
+    //     ethers.AbiCoder.defaultAbiCoder().encode(
+    //         ["tuple(address,address,uint24,int24)"], // PoolKey as tuple
+    //         [[CURRENCY0, CURRENCY1, FEE, TICK_SPACING]]
+    //     ) +
+    //     ethers.zeroPadValue(ethers.toBeHex(TICK_SPACING), 32).slice(2) + // hooks (bytes1)
+    //     ethers.zeroPadValue(ethers.toBeHex(-887272), 32).slice(2) +     // tickLower
+    //     ethers.zeroPadValue(ethers.toBeHex(887272), 32).slice(2) +      // tickUpper
+    //     ethers.zeroPadValue(ETH_AMOUNT.toHexString(), 32).slice(2) +          // amount0Desired
+    //     ethers.zeroPadValue(ETIM_AMOUNT.toHexString(), 32).slice(2) +         // amount1Desired
+    //     ethers.zeroPadValue((ETH_AMOUNT.mul(95).div(100)).toHexString(), 32).slice(2) + // amount0Min
+    //     ethers.zeroPadValue((ETIM_AMOUNT.mul(95).div(100)).toHexString(), 32).slice(2) + // amount1Min
+    //     ethers.zeroPadValue(signer.address, 32).slice(2),                    // recipient
+    //     // SETTLE_ALL: no params (empty bytes)
+    //     "0x"
+    // ];
+
+    // 更简单的方式：使用 abi.encode 嵌套
+    const paramsEncoded = [
+        ethers.AbiCoder.defaultAbiCoder().encode(
+            [
+                "tuple(address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks)",
+                "int24",
+                "int24",
+                "uint256",
+                "uint256",
+                "uint256",
+                "uint256",
+                "address"
+            ],
+            [
+                poolKey,// [CURRENCY0, CURRENCY1, FEE, TICK_SPACING, HOOKS],
+                -887272,   // tickLower
+                887272,    // tickUpper
+                ETH_AMOUNT,
+                ETIM_AMOUNT,
+                0, //ETH_AMOUNT * BigInt(95) / BigInt(100),
+                0, //ETIM_AMOUNT * BigInt(95) / BigInt(100),
+                signer.address
+            ]
+        ),
+        // "0x0c" // for SETTLE_ALL
+        ethers.AbiCoder.defaultAbiCoder().encode(
+            ["address", "address"],
+            [CURRENCY0, CURRENCY1]
+        )
     ];
 
-    const wethContract = await getWETHContract(deployer, "0xfff9976782d46cc05630d1f6ebab18b2324d6b14");
+    const unlockData = ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes", "bytes[]"],
+        [actions, paramsEncoded]
+    );
 
-    // 要兑换的 ETH 数量（例如：0.1 ETH）
-    const amount = ethers.parseEther("0.0001");
-
-    try {
-        // 检查余额
-        const ethBalance = await ethers.provider.getBalance(deployer.address);
-        console.log(`ETH 余额: ${ethers.formatEther(ethBalance)} ETH`);
-
-        if (ethBalance < amount) {
-            console.log("ETH 余额不足");
-            return;
+    // ===== 4. 调用 modifyLiquidities =====
+    console.log("💧 Adding liquidity directly via PositionManager...");
+    const tx = await positionManager.modifyLiquidities(
+        unlockData,
+        Math.floor(Date.now() / 1000) + 600, // 10-minute deadline
+        {
+            value: ETH_AMOUNT,
+            gasLimit: 6000000
         }
-        // 执行兑换
-        console.log(`正在将 ${ethers.formatEther(amount)} ETH 兑换为 WETH...`);
-
-        const tx = await wethContract.deposit({
-            value: amount,
-            gasLimit: 100000
-        });
-
-        console.log(`交易哈希: ${tx.hash}`);
-        await tx.wait();
-        console.log("兑换成功！");
-
-        // 检查 WETH 余额
-        const wethBalance = await wethContract.balanceOf(deployer.address);
-        console.log(`WETH 余额: ${ethers.formatEther(wethBalance)} WETH`);
-
-    } catch (error) {
-        console.error("兑换失败:", error);
-    }
+    );
+    await tx.wait();
+    console.log("✅ Liquidity added! NFT minted to your address.");
 }
 
 main()

@@ -1,66 +1,39 @@
 // scripts/convertEthToWeth.js
 const { ethers } = require("hardhat");
-const { getWETHContract } = require("./util");
-const { formatEther, MaxUint256 } = require("ethers");
 
-const ETIMMainAddress = '0x06049D835BAC69e7751CaD2C9Ab1aA88808fc1B3';
-const ETIMTokenAddress = '0x2a75a9AfF7d909002fc458b765CB92F47350464B';
-const ETIMNodeAddress = '0x0753ba18e716B0B4fA42aD0e66FdbBCcA0392A20';
-const WETHAddress = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
-const ETIMPoolAddress = '0x2b761D3d44b48Be4Fec0C4aF895EB549f9e255A3';
+// forking
+const ETIMMainAddress = '0x560C37Cd680b0816A09846F33BA9D9d15Ca1019C';
+const ETIMTokenAddress = '0x4039De7C4bAa31b0F93ad232c656DC3e8387AE7a';
+const ETIMNodeAddress = '0x1D64Fd9269b4Ca972D544920e1C5423b867D3d23';
+const ETIMPoolAddress = '0x1a0B78E47bB91Bb152D039Fd82816aE72E72Ee54';
+const ETIMHookAddress = '0xe3F8d5F49C2eb1a45352eF1dafB865cA27344044';
+const Permit2Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+const PositionManagerAddress = '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e';
+const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
 
 async function main() {
     const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
     const etimNode = await ethers.getContractAt("ETIMNode", ETIMNodeAddress);
-    const etimPool = await ethers.getContractAt("ETIMPoolManager", ETIMPoolAddress);
-    const weth = await getWETHContract();
+    const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
 
     const [deployer, a, b, c, d, e, f] = await ethers.getSigners();
 
-    // tx = await etimToken.approve(ETIMPoolAddress, MaxUint256);
-    // await tx.wait();
-    // tx = await etimPool.connect(deployer).addLiquidity(ethers.parseEther("1"), ethers.parseEther("2000"), {value: ethers.parseEther("1")});
-    // await tx.wait();
-    
-    // console.log(ethers.formatEther(await etimToken.balanceOf(deployer.address)));
-    // tx = await etimPool.connect(deployer).swapEthToEtim(ethers.parseEther("1"), {value: ethers.parseEther("1")});
-    // receipt = await tx.wait();
-    // console.log(ethers.formatEther(await etimToken.balanceOf(deployer.address)));
+    let tx = await etimToken.approve(ETIMPoolAddress, ethers.MaxInt256);
+    await tx.wait();
 
-    // tx = await etimPool.connect(deployer).swapAndAddLiquidity(ethers.parseEther("1"), {value: ethers.parseEther("1")});
-    // receipt = await tx.wait();
-
-    tx = await etimPool.connect(deployer).swapAndBurn(ethers.parseEther("1"), {value: ethers.parseEther("1")});
-    receipt = await tx.wait();
-    
     console.log("【池子管理合约】池子内ETH余量:", ethers.formatEther(await etimPool.getEthReserves()));
 
     // 调整区块时间
     // await updateBlockTime();
 
-    // tx = await etimMain.getPriceWethInEtim();
-    // await tx.wait();
-    // console.log('etim per weth: ', ethers.formatEther(await etimMain.wethPriceInEtim()));
-    // tx = await etimMain.getPriceWethInU();
-    // await tx.wait();
-    // console.log('usdc per weth: ', ethers.formatUnits(await etimMain.wethPriceInUSD(), 6));
-
-    // tx = await etimMain.updateDailyPrice();
-    // await tx.wait();
-    // console.log('etim per usdc: ', ethers.formatEther(await etimMain.usdPriceInEtim()));
-
-    // await participate(deployer, etimMain, weth);
-
-    // await participate(a, etimMain, weth);
-    // await participate(b, etimMain, weth);
-    // await participate(c, etimMain, weth);
-    // await participate(d, etimMain, weth);
-    // await participate(e, etimMain, weth);
-    // await participate(f, etimMain, weth);
+    tx = await etimMain.updateDailyPrice();
+    await tx.wait();
+    // console.log('etim per eth: ', ethers.formatEther(await etimMain.ethPriceInEtim()));
+    // console.log('usdc per eth: ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
 
     // 相互转账1
-    // let tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("10"));
+    // tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("10"));
     // console.log((await tx.wait()).hash);
     // tx = await etimToken.connect(b).transfer(a.address, ethers.parseEther("10"));
     // console.log((await tx.wait()).hash);
@@ -75,23 +48,41 @@ async function main() {
     // tx = await etimToken.connect(d).transfer(b.address, ethers.parseEther("25"));
     // console.log((await tx.wait()).hash);
 
+    // await participate(a, etimMain);
+    // await participate(b, etimMain);
+    // await participate(c, etimMain);
+    // await participate(d, etimMain);
+    // await participate(e, etimMain);
+    // await participate(f, etimMain);
+
     // console.log("下级", a.address, "上级", await etimMain.referrerOf(a.address));
     // console.log("下级", b.address, "上级", await etimMain.referrerOf(b.address));
     // try { console.log("上级", a.address, "下级", await etimMain.referralsOfList(a.address, 0)); } catch (e) { }
     // try { console.log("上级", b.address, "下级", await etimMain.referralsOfList(b.address, 0)); } catch (e) { }
-    // console.log("main合约etim代币", ethers.formatEther(await etimToken.balanceOf(ETIMMainAddress)), "main合约weth代币", ethers.formatEther(await weth.balanceOf(ETIMMainAddress)));
+    // console.log("main合约etim代币", ethers.formatEther(await etimToken.balanceOf(ETIMMainAddress)));
     // console.log("0地址etim代币", ethers.formatEther(await etimToken.balanceOf("0x000000000000000000000000000000000000dEaD")));
 
     await getEtimMainStatus(etimMain);
-    // await getUserInfo(etimMain, a);
+    await getUserInfo(etimMain, a);
     // await getUserInfo(etimMain, b);
     // await getUserInfo(etimMain, c);
     // await getUserInfo(etimMain, d);
 
-    // console.log("x usd兑换etim", ethers.formatEther(await etimMain._getDayU2ETIM(0, ethers.parseUnits("100", 6))));
+    // await getEthEtimAmount(a, etimToken);
+    // await getEthEtimAmount(b, etimToken);
 
-    // await getETH_WETH_ETIM(a, weth, etimToken);
-    // await getETH_WETH_ETIM(b, weth, etimToken);
+    // Mint节点
+    // tx = await etimNode.connect(a).mint(1);
+    // console.log((await tx.wait()).hash);
+    // 同步节点
+    // tx = await etimMain.connect(a).syncNodes();
+    // console.log((await tx.wait()).hash);
+    // 领取节点奖励
+    // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
+    // tx = await etimMain.connect(a).claimNodeRewards();
+    // console.log((await tx.wait()).hash);
+    // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
+
 
     // console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
@@ -99,20 +90,20 @@ async function main() {
 
     // 领奖
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
-    // let tx = await etimMain.connect(a).claim();
+    // tx = await etimMain.connect(a).claim();
     // console.log((await tx.wait()).hash);
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
     // 卖出
-    // await getETH_WETH_ETIM(deployer, weth, etimToken);
+    // await getEthEtimAmount(deployer, etimToken);
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(deployer.address)));
     // tx = await etimMain.connect(deployer).sellETIM(ethers.parseEther("1"));
     // console.log((await tx.wait()).hash);
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(deployer.address)));
-    // await getETH_WETH_ETIM(deployer, weth, etimToken);
+    // await getEthEtimAmount(deployer, etimToken);
 
-    // console.log(await getETH_WETH_ETIM(a, weth, etimToken));
-    // console.log(await getETH_WETH_ETIM(ETIMMainAddress, weth, etimToken));
+    // console.log(await getEthEtimAmount(a, etimToken));
+    // console.log(await getEthEtimAmount(ETIMMainAddress, etimToken));
 
     // console.log(await etimNode.connect(b).totalPerformancePool());
     // console.log(await etimToken.balanceOf(ETIMMainAddress));
@@ -124,38 +115,15 @@ async function main() {
     }
 }
 
-// 授权 WETH
-async function approveWETH(user, wethContract, spender, amount) {
-    // 授权一个较大的金额，避免频繁授权
-    const approveAmount = amount * 10n;
-
-    console.log("授权金额:", ethers.formatEther(approveAmount), "WETH");
-    console.log("授权给:", spender);
-
-    const approveTx = await wethContract.connect(user).approve(
-        spender,
-        approveAmount
-    );
-    await approveTx.wait();
-    console.log("授权成功");
-
-    // 验证授权
-    const newAllowance = await wethContract.allowance(user.address, spender);
-    console.log("新授权额度:", ethers.formatEther(newAllowance), "WETH");
-}
-
-async function participate(user, etimMain, weth) {
+async function participate(user, etimMain) {
     try {
         console.log(`[ETIMMain] participate ${user.address}`);
         // 检查账户余额
         const balance = await ethers.provider.getBalance(user.address);
-        console.log("账户余额:", user.address, ethers.formatEther(balance), "ETH", ethers.formatEther(await weth.balanceOf(user.address)), "WETH");
-        console.log("当前WETH授权额度:", await weth.allowance(user.address, ETIMMainAddress));
-        await approveWETH(user, weth, ETIMMainAddress, ethers.parseEther("100"));
+        console.log("账户余额:", user.address, ethers.formatEther(balance), "ETH");
 
         await getUserInfo(etimMain, user);
 
-        // const tx = await etimMain.connect(user).participate();
         const tx = await etimMain.connect(user).deposit({ value: ethers.parseEther("0.0637") });
         const receipt = await tx.wait();
         console.log("交易hash", receipt.hash);
@@ -176,42 +144,42 @@ async function getUserInfo(etimMain, user) {
     console.log(`  直推人数: ${userInfo[i++]}`);
     console.log(`  团队币量: ${ethers.formatEther(userInfo[i++])}`);
     console.log(`  邀请等级: ${userInfo[i++]}`);
+    console.log(`  节点数量: ${userInfo[i++]}`);
+    console.log(`  节点奖励领取累积: ${ethers.formatUnits(userInfo[i++])}`);
+    console.log(`  节点待领奖励: ${ethers.formatUnits(userInfo[i++])}`);
 
     return userInfo;
 }
 
-async function getETH_WETH_ETIM(user, weth, etimToken) {
+async function getEthEtimAmount(user, etimToken) {
     const balance = await ethers.provider.getBalance(user.address);
-    const wethBalance = await weth.balanceOf(user.address);
     const etimBalance = await etimToken.balanceOf(user.address);
-    console.log("账户余额:", user.address, ethers.formatEther(balance), "ETH", ethers.formatEther(wethBalance), "WETH", ethers.formatEther(etimBalance), "ETIM");
+    console.log("账户余额:", user.address, ethers.formatEther(balance), "ETH", ethers.formatEther(etimBalance), "ETIM");
 
-    return (balance, wethBalance, etimBalance);
+    return (balance, etimBalance);
 }
 
 async function getEtimMainStatus(etimMain) {
     console.log("etimMain 参与人数", await etimMain.totalUsers());
-    console.log("etimMain deposited(WETH)", ethers.formatEther(await etimMain.totalDeposited()));
-    console.log('etimMain 价格(ETIM per WETH): ', ethers.formatEther(await etimMain.wethPriceInEtim()));
-    console.log('etimMain 价格(USDC per WETH): ', ethers.formatUnits(await etimMain.wethPriceInUSD(), 6));
-    console.log('etimMain 价格(ETIM per USDC): ', ethers.formatEther(await etimMain.usdPriceInEtim()));
+    {
+        const dailyDepositCap = await etimMain.dailyDepositCap();
+        const dailyDepositRate = await etimMain.dailyDepositRate();
+        const denominator = await etimMain.FEE_DENOMINATOR();
+        console.log("etimMain 当日deposit(ETH) 限制", ethers.formatEther(dailyDepositCap * dailyDepositRate / denominator));
+    }
+    console.log("etimMain deposited(ETH)", ethers.formatEther(await etimMain.totalDeposited()));
+    console.log('etimMain 价格(ETIM per ETH): ', ethers.formatEther(await etimMain.ethPriceInEtim()));
+    console.log('etimMain 价格(USDC per ETH): ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
+    console.log('etimMain 价格(ETIM per USDC): ', ethers.formatEther(await etimMain.etimPerUsd()));
+    console.log('etimMain 某日价格(ETIM per USDC): ', ethers.formatEther(await etimMain.dailyUsdEtimPrice(20512)));
+    console.log('etimMain 总激活节点: ', await etimMain.totalActiveNodes());
+    console.log('etimMain 激活节点奖励份额: ', ethers.formatEther(await etimMain.rewardPerNode()));
     try {
         for (let i = 0; i < 1000; i++) {
             console.log("etimMain 参与地址", await etimMain.participants(i));
         }
     } catch (e) {
     }
-}
-
-async function getPriceUsdcPerWeth(uniswapRouter) {
-    // 通过 Uniswap 路由器合约查询 1 WETH 可以兑换多少 USDC
-    const amounts = await uniswapRouter.getAmountsOut(
-        ethers.parseEther("1"), // 输入 1 WETH
-        [WETHAddress, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"]    // 交易路径：WETH -> USDC
-    );
-    // 返回的 amounts[1] 就是能兑换的 USDC 数量（带 6 位小数）
-    const usdcAmount = ethers.formatUnits(amounts[1], 6);
-    console.log(`1 WETH = ${usdcAmount} USDC`);
 }
 
 async function updateBlockTime() {
