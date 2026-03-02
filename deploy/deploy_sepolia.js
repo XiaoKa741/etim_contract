@@ -28,7 +28,7 @@ async function main() {
     let foundSalt = null;
     let hookAddress = null;
 
-    for (let salt = 0n; salt < 1000000n; salt++) {
+    for (let salt = 40100n; salt < 1000000n; salt++) {
         const saltHex = ethers.zeroPadValue(ethers.toBeHex(salt), 32);
         const predicted = ethers.getCreate2Address(CREATE2_FACTORY, saltHex, initCodeHash);
         if ((BigInt(predicted) & 0x3FFFn) === 0x00CCn) {
@@ -118,21 +118,21 @@ async function main() {
     console.log("\n🆗. 分配代币...");
     tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("192570000"));
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress.address, ethers.parseEther("105000000"));
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("105000000"));
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress.address, ethers.parseEther("21000000"));
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("21000000"));
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress.address, ethers.parseEther("21000000"));
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("21000000"));
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(deployer.address, ethers.parseEther("21000000"));
-    await tx.wait();
+    // tx = await etimToken.connect(deployer).transfer(deployer.address, ethers.parseEther("21000000"));
+    // await tx.wait();
     tx = await etimToken.connect(deployer).transfer(deployer1.address, ethers.parseEther("6300000"));
     await tx.wait();
 
     console.log("代币总量 grouthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
-    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress.address)), "ETIM");
-    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress.address)), "ETIM");
-    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress.address)), "ETIM");
+    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
+    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
+    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
     console.log("代币总量 airdrop:", ethers.formatEther(await etimToken.balanceOf(deployer.address)), "ETIM");
     console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
 
