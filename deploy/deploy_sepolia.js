@@ -130,11 +130,11 @@ async function main() {
     await tx.wait();
 
     console.log("代币总量 grouthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
-    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(marketInfra.address)), "ETIM");
-    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(ecoFund.address)), "ETIM");
-    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(communityFund.address)), "ETIM");
-    console.log("代币总量 airdrop:", ethers.formatEther(await etimToken.balanceOf(airdrop.address)), "ETIM");
-    console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(ethFoundation.address)), "ETIM");
+    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress.address)), "ETIM");
+    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress.address)), "ETIM");
+    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress.address)), "ETIM");
+    console.log("代币总量 airdrop:", ethers.formatEther(await etimToken.balanceOf(deployer.address)), "ETIM");
+    console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
 
     // ========== 设置合约间依赖关系 ==========
     console.log("\n🆗. 设置合约间依赖关系...");
@@ -168,8 +168,8 @@ async function main() {
     await tx.wait();
 
     console.log("【池子HELPER合约】添加初始流动性 ETIM/ETH");
-    const ethAmount = ethers.parseEther("50");
-    const etimAmount = ethers.parseEther("100000");
+    const ethAmount = ethers.parseEther("0.2");
+    const etimAmount = ethers.parseEther("400");
     // approve
     tx = await etimToken.connect(deployer).approve(etimPoolAddress, ethers.MaxInt256);
     await tx.wait();

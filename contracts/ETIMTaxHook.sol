@@ -16,14 +16,14 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol"; // only for local debugging
 
-// progress sell — no business logic
+// Progress sell — no business logic
 interface IETIMMain {
     function distributeNodePerformanceOnEtimSell(uint256 etimAmount) external;
 }
 
-// @notice Uniswap V4 Hook — 买入/卖出征税，税收暂存本合约，由 owner 统一提取
+/// @notice Uniswap V4 Hook — applies tax on buys/sells; tax is held in this contract and can be withdrawn by owner
 contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -69,7 +69,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     // =========================================================
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
-    uint256 public constant MAX_TAX_BPS     = 1_000; // 最大 10%
+    uint256 public constant MAX_TAX_BPS     = 1_000; // Max 10%
     address public constant BURN_ADDRESS    = 0x000000000000000000000000000000000000dEaD;
 
     // =========================================================
@@ -95,17 +95,17 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     bool    public tradingEnabled;
 
     // =========================================================
-    //                  WHITELIST (免税地址)
+    //                  WHITELIST (EXEMPT ADDRESSES)
     // =========================================================
 
-    // @notice 免税白名单，ETIMPoolManager 等内部合约加入后不收税
+    /// @notice Exempt whitelist: internal contracts like ETIMPoolHelper are added here to avoid taxation
     mapping(address => bool) public isExempt;
 
     // =========================================================
     //                  TAX ACCUMULATOR
     // =========================================================
 
-    // @notice currency => 累积税收余额
+    /// @notice currency => accumulated tax balance
     mapping(address => uint256) public taxBalance;
 
     // =========================================================
@@ -145,12 +145,12 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             afterAddLiquidity:             false,
             beforeRemoveLiquidity:         false,
             afterRemoveLiquidity:          false,
-            beforeSwap:                    true,  // 卖出税收分配 (true)
-            afterSwap:                     true,  // 交易完成后扣税
+            beforeSwap:                    true,  // Handle sell-side allocation logic
+            afterSwap:                     true,  // Deduct tax after trade
             beforeDonate:                  false,
             afterDonate:                   false,
-            beforeSwapReturnDelta:         true,  // 修改实际进池子的 ETIM 数量(true)
-            afterSwapReturnDelta:          true,  // 修改用户实际到手金额
+            beforeSwapReturnDelta:         true,  // Modify actual ETIM input to pool
+            afterSwapReturnDelta:          true,  // Modify user's actual output amount
             afterAddLiquidityReturnDelta:  false,
             afterRemoveLiquidityReturnDelta: false
         });
@@ -160,7 +160,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     //                    CORE HOOK LOGIC
     // =========================================================
 
-    // @notice _afterSwap：计算税额，从用户输出中扣除，存入本合约
+    /// @notice _afterSwap: calculate tax, deduct from user output, and hold in this contract
     function _afterSwap(
         address sender,
         PoolKey calldata key,
@@ -173,34 +173,34 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         whenNotPaused
         returns (bytes4, int128)
     {
-        console.log("[_afterSwap] ENTER");
-        // 白名单地址直接跳过
+        // console.log("[_afterSwap] ENTER"); // DEBUG
+        // Skip for whitelisted addresses
         if (isExempt[sender]) {
-             console.log("[_afterSwap] EXIT WHITE LIST");
+            // console.log("[_afterSwap] EXIT WHITE LIST"); // DEBUG
             return (this.afterSwap.selector, 0);
         }
-        // 交易控制
+        // Enforce trading status
         if (!tradingEnabled) {
             revert TradingNotEnabled();
         }
 
-        // zeroForOne = true  → 买入，输出是 currency1
-        // zeroForOne = false → 卖出，输出是 currency0
+        // zeroForOne = true  → buy, output is currency1
+        // zeroForOne = false → sell, output is currency0
         bool     isBuy          = params.zeroForOne;
         int128   outputDelta    = isBuy ? delta.amount1() : delta.amount0();
         Currency outputCurrency = isBuy ? key.currency1  : key.currency0;
 
-        console.log("[_afterSwap] params:");
-        console.logBool(params.zeroForOne);
-        console.logInt(params.amountSpecified);
+        // console.log("[_afterSwap] params:"); // DEBUG
+        // console.logBool(params.zeroForOne); // DEBUG
+        // console.logInt(params.amountSpecified); // DEBUG
 
-        console.log("[_afterSwap] outputDelta:");
-        console.logInt(delta.amount0());
-        console.logInt(delta.amount1());
-        console.logAddress(Currency.unwrap(key.currency0));
-        console.logAddress(Currency.unwrap(key.currency1));
+        // console.log("[_afterSwap] outputDelta:"); // DEBUG
+        // console.logInt(delta.amount0()); // DEBUG
+        // console.logInt(delta.amount1()); // DEBUG
+        // console.logAddress(Currency.unwrap(key.currency0)); // DEBUG
+        // console.logAddress(Currency.unwrap(key.currency1)); // DEBUG
 
-        // 只对正向输出（用户实际收到 token）收税
+        // Only tax positive output (i.e., user actually receives tokens)
         if (outputDelta <= 0) {
             return (this.afterSwap.selector, 0);
         }
@@ -215,24 +215,24 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             return (this.afterSwap.selector, 0);
         }
 
-        // 从 PoolManager 把税收 take 到本合约
+        // Take the tax amount from PoolManager into this contract
         poolManager.take(outputCurrency, address(this), taxAmount);
 
-        // 记账
+        // Record accounting
         address currencyAddr = Currency.unwrap(outputCurrency);
         taxBalance[currencyAddr] += taxAmount;
 
         emit TaxCollected(key.toId(), sender, currencyAddr, taxAmount, isBuy);
-        console.log("[_afterSwap] EXIT NOT WHITE LIST");
-        console.log("[_afterSwap] taxAmount:", taxAmount);
-        console.log("[_afterSwap] taxAmount to int128:");
-        console.logInt(taxAmount.toInt128());
+        // console.log("[_afterSwap] EXIT NOT WHITE LIST"); // DEBUG
+        // console.log("[_afterSwap] taxAmount:", taxAmount); // DEBUG
+        // console.log("[_afterSwap] taxAmount to int128:"); // DEBUG
+        // console.logInt(taxAmount.toInt128()); // DEBUG
 
-        // 返回负数 delta → 告知 V4 用户少收这么多
+        // Return negative delta → tells V4 that user receives less by this amount
         return (this.afterSwap.selector, -taxAmount.toInt128());
     }
 
-    // @notice _beforeSwap：用户卖出ETIM进行额外分配处理
+    /// @notice _beforeSwap: handle additional allocation logic when user sells ETIM
     function _beforeSwap(
         address sender,
         PoolKey calldata key,
@@ -240,54 +240,55 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
 
-        console.log("[_beforeSwap] ENTER .............");
-        // 白名单地址直接跳过
+        // console.log("[_beforeSwap] ENTER ............."); // DEBUG
+        // Skip for whitelisted addresses
         if (isExempt[sender]) {
-            console.log("[_beforeSwap] EXIT WHITE LIST");
+            // console.log("[_beforeSwap] EXIT WHITE LIST"); // DEBUG
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
-        // 交易控制
+        // Enforce trading status
         if (!tradingEnabled) {
             revert TradingNotEnabled();
         }
 
-        // 业务/Token合约未设置不做任何处理
+        // If business or token contract not set, do nothing
         if (address(0) == mainContract || address(0) == etimContract) {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        console.log("[_beforeSwap] params:");
-        console.logBool(params.zeroForOne);
-        console.logInt(params.amountSpecified);
-        // 卖 ETIM 方向（zeroForOne = false）
+        // console.log("[_beforeSwap] params:"); // DEBUG
+        // console.logBool(params.zeroForOne); // DEBUG
+        // console.logInt(params.amountSpecified); // DEBUG
+
+        // Selling ETIM direction (zeroForOne = false)
         if (!params.zeroForOne) {
 
-            // 禁止 exactOutput （指定得到多少的ETH，反推需要卖出的ETIM的情况，这种直接revert）
+            // Disallow exactOutput mode (where output ETH is specified and input ETIM is derived)
             if (params.amountSpecified > 0) revert ExactOutputNotSupported();
 
-            // exactInput 税收处理
+            // exactInput: user specifies how much ETIM to sell
             uint256 etimIn = uint256(-params.amountSpecified);
-            uint256 toLp   = etimIn * 85 / 100;
-            uint256 toBurn = etimIn * 10 / 100;
-            uint256 toNode = etimIn - toLp - toBurn;
+            uint256 toLp   = etimIn * 85 / 100;  // 85% goes to liquidity
+            uint256 toBurn = etimIn * 10 / 100;  // 10% burned
+            uint256 toNode = etimIn - toLp - toBurn; // 5% to node performance
 
-            // 从 PoolManager 取出全部 ETIM 到本合约
+            // Pull all ETIM from PoolManager into this contract
             poolManager.take(key.currency1, address(this), etimIn);
-            // 10% → 黑洞
+            // 10% → burn address
             IERC20(etimContract).safeTransfer(BURN_ADDRESS, toBurn);
-            // 5% → 节点业绩
+            // 5% → main contract for node rewards
             IERC20(etimContract).safeTransfer(mainContract, toNode);
             try IETIMMain(etimContract).distributeNodePerformanceOnEtimSell(toNode) {} catch {}
-            // 85% → 还回去参与swap
+            // 85% → return to pool for swap
             poolManager.sync(key.currency1);
             IERC20(etimContract).safeTransfer(address(poolManager), toLp);
             poolManager.settle();
 
-            // 告知 PoolManager 实际参与 swap 的 ETIM 少了 (toBurn + toNode)
+            // Inform PoolManager that actual ETIM input is reduced by (toBurn + toNode)
             return (
                 this.beforeSwap.selector,
                 toBeforeSwapDelta(
-                    -int128(int256(toBurn + toNode)),   // 减少的 specifiedAmount
+                    -int128(int256(toBurn + toNode)),   // Reduced specifiedAmount
                     0
                 ),
                 0
@@ -301,9 +302,9 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     //                    WITHDRAW TAX
     // =========================================================
 
-    // @notice owner 提取指定 currency 的全部税收
-    // @param  currency  token 地址（address(0) = native ETH）
-    // @param  to        接收地址
+    /// @notice Owner withdraws all accumulated tax of a given currency
+    /// @param  currency  Token address (address(0) = native ETH)
+    /// @param  to        Recipient address
     function withdrawTax(address currency, address to)
         external
         onlyOwner
@@ -320,10 +321,10 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         emit TaxWithdrawn(currency, amount, to);
     }
 
-    // @notice owner 提取指定 currency 的部分税收
-    // @param  currency  token 地址（address(0) = native ETH）
-    // @param  amount    提取金额
-    // @param  to        接收地址
+    /// @notice Owner withdraws partial tax of a given currency
+    /// @param  currency  Token address (address(0) = native ETH)
+    /// @param  amount    Amount to withdraw
+    /// @param  to        Recipient address
     function withdrawTaxPartial(address currency, uint256 amount, address to)
         external
         onlyOwner
@@ -355,7 +356,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     //                   ADMIN FUNCTIONS
     // =========================================================
 
-    // @notice 设置买入/卖出税率（bps，最大 10%）
+    /// @notice Set buy/sell tax rates (in bps, max 10%)
     function setTaxRates(uint256 _buyBps, uint256 _sellBps) external onlyOwner {
         if (_buyBps > MAX_TAX_BPS || _sellBps > MAX_TAX_BPS) revert InvalidBps();
         buyTaxBps  = _buyBps;
@@ -363,19 +364,19 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         emit TaxRateUpdated(_buyBps, _sellBps);
     }
 
-    // @notice 设置免税白名单（ETIMPoolHelper 等内部合约）
+    /// @notice Manage tax-exempt whitelist (e.g., add ETIMPoolHelper)
     function setExempt(address account, bool exempt) external onlyOwner {
         if (account == address(0)) revert ZeroAddress();
         isExempt[account] = exempt;
         emit ExemptUpdated(account, exempt);
     }
 
-    // @notice 非白名单交易控制，限制买卖
+    /// @notice Enable/disable trading for non-exempt addresses
     function setTradingEnabled(bool enabled) external onlyOwner {
         tradingEnabled = enabled;
     }
 
-    // @notice 设置Token合约地址（仅 owner）
+    /// @notice Set the ETIM token contract address (only once, by owner)
     function setTokenContract(address _etimContract) external onlyOwner {
         if (address(0) != etimContract) revert AlreadySet();
         if (address(0) == _etimContract) revert ZeroAddress();
@@ -383,7 +384,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         etimContract = _etimContract;
     }
 
-    // @notice 设置主业务合约地址（仅 owner）
+    /// @notice Set the main business contract address (only owner)
     function setMainContract(address _mainContract) external onlyOwner {
         if (_mainContract == address(0)) revert ZeroAddress();
         emit MainContractUpdated(mainContract, _mainContract);
@@ -423,7 +424,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     //                    VIEW FUNCTIONS
     // =========================================================
 
-    // @notice 查询当前税率配置
+    /// @notice Query current tax configuration
     function getTaxConfig() external view returns (uint256 _buyBps, uint256 _sellBps) {
         return (buyTaxBps, sellTaxBps);
     }
