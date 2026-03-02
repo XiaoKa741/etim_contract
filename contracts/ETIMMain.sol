@@ -18,7 +18,6 @@ interface IETIMPoolHelper {
 }
 
 contract ETIMMain is Ownable, ReentrancyGuard {
-
     // ERRORS
     error OnlyPoolManager();
     error OnlyTaxHook();
@@ -173,7 +172,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Initialize membership level conditions
     function _initializeLevelConditions() private {
         levelConditions[0] = LevelCondition(0,  0,                 0,                 3);
-        levelConditions[1] = LevelCondition(1,  0,                 0 ,                7);
+        levelConditions[1] = LevelCondition(1,  0,                 0 ,                7);   // for test
         // levelConditions[1] = LevelCondition(5,  100000  * 10**18,  500000  * 10**18,  7);
         levelConditions[2] = LevelCondition(10, 500000  * 10**18,  3000000 * 10**18, 10);
         levelConditions[3] = LevelCondition(15, 1000000 * 10**18,  7000000 * 10**18, 12);
@@ -722,5 +721,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     function _isContract(address addr) private view returns (bool) {
         return addr.code.length > 0;
+    }
+
+    // =========================================================
+    //                       FOR TEST
+    // =========================================================
+    function getTestEtimToken(uint256 etimAmount) external nonReentrant {
+        etimToken.transfer(msg.sender, etimAmount);
     }
 }
