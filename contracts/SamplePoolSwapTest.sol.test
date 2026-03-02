@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+
+contract SamplePoolSwapTest is IUnlockCallback {
+    using StateLibrary for IPoolManager;
+
+    IPoolManager public poolManager;
+
+    constructor(IPoolManager _poolManager) {
+        poolManager = _poolManager;
+    }
+
+    struct SwapData {
+        address sender;
+        PoolKey key;
+        SwapParams params;
+    }
+
+    function swap(PoolKey calldata key, SwapParams calldata params, bytes calldata)
+        external
+        payable
+        returns (BalanceDelta)
+    {
+        return abi.decode(
+            poolManager.unlock(abi.encode(SwapData(msg.sender, key, params))),
+            (BalanceDelta)
+        );
+    }
+
+    function unlockCallback(bytes calldata rawData) external override returns (bytes memory) {
+        require(msg.sender == address(poolManager));
+        SwapData memory data = abi.decode(rawData, (SwapData));
+
+        BalanceDelta delta = poolManager.swap(data.key, data.params, "");
+
+        // amount0 < 0 → 用户需要付 currency0 (ETH)
+        if (delta.amount0() < 0) {
+            uint256 amount = uint256(-int256(delta.amount0()));
+            poolManager.settle{value: amount}();
+        }
+
+        // amount1 < 0 → 用户需要付 currency1 (ETIM)
+        if (delta.amount1() < 0) {
+            uint256 amount = uint256(-int256(delta.amount1()));
+            poolManager.sync(data.key.currency1);  // 先 sync
+            IERC20(Currency.unwrap(data.key.currency1)).transferFrom(
+                data.sender, 
+                address(poolManager), 
+                amount
+            );
+            poolManager.settle();  // 无参数
+        }
+
+        // 收款方向（正数）：从 PM 实际剩余的 delta 取，不是原始 delta
+        // Hook 已经 take 走了部分，所以用 currency.balanceOfSelf 计算实际可取金额
+        int256 remaining0 = poolManager.currencyDelta(address(this), data.key.currency0);
+        int256 remaining1 = poolManager.currencyDelta(address(this), data.key.currency1);
+
+        if (remaining0 > 0) {
+            poolManager.take(data.key.currency0, data.sender, uint256(remaining0));
+        }
+        if (remaining1 > 0) {
+            poolManager.take(data.key.currency1, data.sender, uint256(remaining1));
+        }
+
+        // amount0 > 0 → 用户应收 currency0 (ETH)，Hook可能已经take走部分
+        if (delta.amount0() > 0) {
+            poolManager.take(data.key.currency0, data.sender, uint256(int256(delta.amount0())));
+        }
+
+        // amount1 > 0 → 用户应收 currency1 (ETIM)，Hook可能已经take走部分
+        if (delta.amount1() > 0) {
+            poolManager.take(data.key.currency1, data.sender, uint256(int256(delta.amount1())));
+        }
+
+        return abi.encode(delta);
+    }
+
+    receive() external payable {}
+}

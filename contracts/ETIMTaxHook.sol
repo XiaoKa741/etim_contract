@@ -14,9 +14,14 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 import "hardhat/console.sol";
+
+// progress sell — no business logic
+interface IETIMMain {
+    function distributeNodePerformanceOnEtimSell(uint256 etimAmount) external;
+}
 
 // @notice Uniswap V4 Hook — 买入/卖出征税，税收暂存本合约，由 owner 统一提取
 contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
@@ -38,6 +43,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     error TransferFailed();
     error TradingNotEnabled();
     error ExactOutputNotSupported();
+    error AlreadySet();
 
     // =========================================================
     //                        EVENTS
@@ -55,6 +61,8 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     event ExemptUpdated(address indexed account, bool exempt);
     event OwnershipTransferStarted(address indexed currentOwner, address indexed pendingOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event TokenContractUpdated(address indexed current);
+    event MainContractUpdated(address indexed previous, address indexed next);
 
     // =========================================================
     //                      CONSTANTS
@@ -62,6 +70,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant MAX_TAX_BPS     = 1_000; // 最大 10%
+    address public constant BURN_ADDRESS    = 0x000000000000000000000000000000000000dEaD;
 
     // =========================================================
     //                    TAX CONFIGURATION
@@ -71,12 +80,19 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     uint256 public sellTaxBps;
 
     // =========================================================
+    //                    BUSINESS CONTRACT
+    // =========================================================
+
+    address etimContract;
+    address mainContract;
+
+    // =========================================================
     //                    ACCESS CONTROL
     // =========================================================
 
     address public owner;
     address public pendingOwner;
-    bool public tradingEnabled;
+    bool    public tradingEnabled;
 
     // =========================================================
     //                  WHITELIST (免税地址)
@@ -102,13 +118,14 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         uint256      _buyTaxBps,
         uint256      _sellTaxBps
     ) BaseHook(IPoolManager(_poolManager)) {
-        if (_owner      == address(0)) revert ZeroAddress();
-        if (_buyTaxBps  > MAX_TAX_BPS) revert InvalidBps();
-        if (_sellTaxBps > MAX_TAX_BPS) revert InvalidBps();
+        if (_poolManager  == address(0)) revert ZeroAddress();
+        if (_owner        == address(0)) revert ZeroAddress();
+        if (_buyTaxBps    > MAX_TAX_BPS) revert InvalidBps();
+        if (_sellTaxBps   > MAX_TAX_BPS) revert InvalidBps();
 
-        owner       = _owner;
-        buyTaxBps   = _buyTaxBps;
-        sellTaxBps  = _sellTaxBps;
+        owner        = _owner;
+        buyTaxBps    = _buyTaxBps;
+        sellTaxBps   = _sellTaxBps;
     }
 
     // =========================================================
@@ -128,11 +145,11 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             afterAddLiquidity:             false,
             beforeRemoveLiquidity:         false,
             afterRemoveLiquidity:          false,
-            beforeSwap:                    false, // 卖出税收分配 (true)
+            beforeSwap:                    true,  // 卖出税收分配 (true)
             afterSwap:                     true,  // 交易完成后扣税
             beforeDonate:                  false,
             afterDonate:                   false,
-            beforeSwapReturnDelta:         false, // 修改实际进池子的 ETIM 数量(true)
+            beforeSwapReturnDelta:         true,  // 修改实际进池子的 ETIM 数量(true)
             afterSwapReturnDelta:          true,  // 修改用户实际到手金额
             afterAddLiquidityReturnDelta:  false,
             afterRemoveLiquidityReturnDelta: false
@@ -173,6 +190,16 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         int128   outputDelta    = isBuy ? delta.amount1() : delta.amount0();
         Currency outputCurrency = isBuy ? key.currency1  : key.currency0;
 
+        console.log("[_afterSwap] params:");
+        console.logBool(params.zeroForOne);
+        console.logInt(params.amountSpecified);
+
+        console.log("[_afterSwap] outputDelta:");
+        console.logInt(delta.amount0());
+        console.logInt(delta.amount1());
+        console.logAddress(Currency.unwrap(key.currency0));
+        console.logAddress(Currency.unwrap(key.currency1));
+
         // 只对正向输出（用户实际收到 token）收税
         if (outputDelta <= 0) {
             return (this.afterSwap.selector, 0);
@@ -197,12 +224,14 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
 
         emit TaxCollected(key.toId(), sender, currencyAddr, taxAmount, isBuy);
         console.log("[_afterSwap] EXIT NOT WHITE LIST");
+        console.log("[_afterSwap] taxAmount:", taxAmount);
+        console.log("[_afterSwap] taxAmount to int128:");
+        console.logInt(taxAmount.toInt128());
 
         // 返回负数 delta → 告知 V4 用户少收这么多
         return (this.afterSwap.selector, -taxAmount.toInt128());
     }
 
-    /*
     // @notice _beforeSwap：用户卖出ETIM进行额外分配处理
     function _beforeSwap(
         address sender,
@@ -211,16 +240,25 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
 
+        console.log("[_beforeSwap] ENTER .............");
         // 白名单地址直接跳过
         if (isExempt[sender]) {
-             console.log("[_afterSwap] EXIT WHITE LIST");
-            return (this.afterSwap.selector, 0);
+            console.log("[_beforeSwap] EXIT WHITE LIST");
+            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
         // 交易控制
         if (!tradingEnabled) {
             revert TradingNotEnabled();
         }
 
+        // 业务/Token合约未设置不做任何处理
+        if (address(0) == mainContract || address(0) == etimContract) {
+            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
+
+        console.log("[_beforeSwap] params:");
+        console.logBool(params.zeroForOne);
+        console.logInt(params.amountSpecified);
         // 卖 ETIM 方向（zeroForOne = false）
         if (!params.zeroForOne) {
 
@@ -236,21 +274,19 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             // 从 PoolManager 取出全部 ETIM 到本合约
             poolManager.take(key.currency1, address(this), etimIn);
             // 10% → 黑洞
-            etimToken.safeTransfer(BURN_ADDRESS, toBurn);
-
-            // 5% → 节点业绩 TODO???
-            // etimToken.safeTransfer(nodeContract, toNode);
-            // mainContract...
-
+            IERC20(etimContract).safeTransfer(BURN_ADDRESS, toBurn);
+            // 5% → 节点业绩
+            IERC20(etimContract).safeTransfer(mainContract, toNode);
+            try IETIMMain(etimContract).distributeNodePerformanceOnEtimSell(toNode) {} catch {}
             // 85% → 还回去参与swap
             poolManager.sync(key.currency1);
-            etimToken.safeTransfer(address(poolManager), toLp);
+            IERC20(etimContract).safeTransfer(address(poolManager), toLp);
             poolManager.settle();
 
             // 告知 PoolManager 实际参与 swap 的 ETIM 少了 (toBurn + toNode)
             return (
-                this._beforeSwap.selector,
-                BeforeSwapDeltaLibrary.toBeforeSwapDelta(
+                this.beforeSwap.selector,
+                toBeforeSwapDelta(
                     -int128(int256(toBurn + toNode)),   // 减少的 specifiedAmount
                     0
                 ),
@@ -258,9 +294,8 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             );
         }
 
-        return (this._beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
-    */
 
     // =========================================================
     //                    WITHDRAW TAX
@@ -328,16 +363,31 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         emit TaxRateUpdated(_buyBps, _sellBps);
     }
 
-    // @notice 设置免税白名单（ETIMPoolManager 等内部合约）
+    // @notice 设置免税白名单（ETIMPoolHelper 等内部合约）
     function setExempt(address account, bool exempt) external onlyOwner {
         if (account == address(0)) revert ZeroAddress();
         isExempt[account] = exempt;
         emit ExemptUpdated(account, exempt);
     }
 
-    // @notice 非白名单交易控制(限制买卖)
+    // @notice 非白名单交易控制，限制买卖
     function setTradingEnabled(bool enabled) external onlyOwner {
         tradingEnabled = enabled;
+    }
+
+    // @notice 设置Token合约地址（仅 owner）
+    function setTokenContract(address _etimContract) external onlyOwner {
+        if (address(0) != etimContract) revert AlreadySet();
+        if (address(0) == _etimContract) revert ZeroAddress();
+        emit TokenContractUpdated(_etimContract);
+        etimContract = _etimContract;
+    }
+
+    // @notice 设置主业务合约地址（仅 owner）
+    function setMainContract(address _mainContract) external onlyOwner {
+        if (_mainContract == address(0)) revert ZeroAddress();
+        emit MainContractUpdated(mainContract, _mainContract);
+        mainContract = _mainContract;
     }
 
     function pause()   external onlyOwner { _pause(); }

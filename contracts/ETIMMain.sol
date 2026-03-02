@@ -11,7 +11,6 @@ interface IETIMPoolHelper {
     function getEthReserves() external view returns (uint256);
     function getEtimPerEth() external view returns (uint256);
     function getUsdcPerEth() external view returns (uint256);
-    // function addLiquidity(uint256 ethAmount, uint256 etimAmount) external payable;
     function swapEthToEtim(uint256 ethAmount) external payable returns (uint256);
     function swapEtimToEth(uint256 etimAmount, address to) external returns (uint256);
     function swapAndAddLiquidity(uint256 ethAmount) external payable;
@@ -20,11 +19,9 @@ interface IETIMPoolHelper {
 
 contract ETIMMain is Ownable, ReentrancyGuard {
 
-    // =========================================================
-    //                        ERRORS
-    // =========================================================
-
+    // ERRORS
     error OnlyPoolManager();
+    error OnlyTaxHook();
     error AlreadyParticipated();
     error NoReferralBinding();
     error DailyDepositLimitExceeded();
@@ -37,13 +34,16 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     error InvalidDelayAmount();
     error GrowthPoolExceeded();
     error BuyNotEnabled();
+    error SellNotEnabled();
     error MustSendETH();
     error InvalidSellAmount();
     error InsufficientBalance();
 
-    IERC20 public etimToken;
-    IERC721 public etimNode;
+    // Other contract
+    IERC20          public etimToken;
+    IERC721         public etimNode;
     IETIMPoolHelper public etimPoolHelper;
+    address         public etimTaxHook;
 
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
@@ -62,8 +62,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public constant FEE_DENOMINATOR = 1000;
 
     // Buy/sell
-    bool public buyEnabled;
-    bool public sellEnabled;
+    // bool public buyEnabled;
+    // bool public sellEnabled;
 
     // Sell fee distribution ratios
     uint256 public constant SELL_LP_RATIO   = 850; // 85%
@@ -71,7 +71,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public constant SELL_NODE_RATIO = 50;  // 5%
 
     // Delayed allocation
-    bool public delayEnabled = false;
+    bool    public delayEnabled = false;
     uint256 public pendingAllocationInUsd = 0;
     uint256 public pendingAllocationInEth = 0;
 
@@ -144,6 +144,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (msg.sender != address(etimPoolHelper)) revert OnlyPoolManager();
         _;
     }
+    modifier onlyTaxHookContract() {
+        if (msg.sender != address(etimTaxHook)) revert OnlyTaxHook();
+        _;
+    }
 
     event Participated(address indexed user, uint256 ethAmount);
     event ETIMClaimed(address indexed user, uint256 etimAmount, uint256 usdValue);
@@ -155,11 +159,13 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     constructor(
         address _etimToken,
         address _etimNode,
-        address _etimPoolHelper
+        address _etimPoolHelper,
+        address _etimTaxHook
     ) Ownable(msg.sender) {
-        etimToken = IERC20(_etimToken);
-        etimNode = IERC721(_etimNode);
+        etimToken      = IERC20(_etimToken);
+        etimNode       = IERC721(_etimNode);
         etimPoolHelper = IETIMPoolHelper(_etimPoolHelper);
+        etimTaxHook    = _etimTaxHook;
 
         _initializeLevelConditions();
     }
@@ -344,6 +350,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
                 lastEthUsdPriceTime = block.timestamp;
             }
         }
+    }
+
+    // HOOK sell callback (called by Tax Hook contract)
+    function distributeNodePerformanceOnEtimSell(uint256 etimAmount) external onlyTaxHookContract {
+        _distributeNodeRewards(etimAmount);
     }
 
     // ETIM token transfer callback (called by ETIM token contract)
@@ -565,38 +576,39 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // =========================================================
 
     // Buy ETIM with ETH
-    function buyETIM() external payable returns (uint256 etimReceived) {
-        if (!buyEnabled) revert BuyNotEnabled();
-        if (msg.value == 0) revert MustSendETH();
+    // function buyETIM() external payable returns (uint256 etimReceived) {
+    //     if (!buyEnabled) revert BuyNotEnabled();
+    //     if (msg.value == 0) revert MustSendETH();
 
-        uint256 ethAmount  = msg.value;
-        etimReceived = etimPoolHelper.swapEthToEtim{value: ethAmount}(ethAmount);
-        etimToken.transfer(msg.sender, etimReceived);
-    }
+    //     uint256 ethAmount  = msg.value;
+    //     etimReceived = etimPoolHelper.swapEthToEtim{value: ethAmount}(ethAmount);
+    //     etimToken.transfer(msg.sender, etimReceived);
+    // }
 
     // Sell ETIM for ETH
-    function sellETIM(uint256 etimAmount) external returns (uint256 ethReceived) {
-        if (etimAmount == 0) revert InvalidSellAmount();
-        if (etimToken.balanceOf(msg.sender) < etimAmount) revert InsufficientBalance();
+    // function sellETIM(uint256 etimAmount) external returns (uint256 ethReceived) {
+    //     if (!sellEnabled) revert SellNotEnabled();
+    //     if (etimAmount == 0) revert InvalidSellAmount();
+    //     if (etimToken.balanceOf(msg.sender) < etimAmount) revert InsufficientBalance();
 
-        etimToken.transferFrom(msg.sender, address(this), etimAmount);
+    //     etimToken.transferFrom(msg.sender, address(this), etimAmount);
 
-        uint256 lpAmount   = (etimAmount * SELL_LP_RATIO)   / FEE_DENOMINATOR; // 85%
-        uint256 burnAmount = (etimAmount * SELL_BURN_RATIO)  / FEE_DENOMINATOR; // 10%
-        uint256 nodeAmount = (etimAmount * SELL_NODE_RATIO)  / FEE_DENOMINATOR; // 5%
+    //     uint256 lpAmount   = (etimAmount * SELL_LP_RATIO)   / FEE_DENOMINATOR; // 85%
+    //     uint256 burnAmount = (etimAmount * SELL_BURN_RATIO)  / FEE_DENOMINATOR; // 10%
+    //     uint256 nodeAmount = (etimAmount * SELL_NODE_RATIO)  / FEE_DENOMINATOR; // 5%
 
-        if (lpAmount > 0) {
-            ethReceived = etimPoolHelper.swapEtimToEth(lpAmount, msg.sender);
-        }
-        if (burnAmount > 0) {
-            etimToken.transfer(BURN_ADDRESS, burnAmount);
-        }
-        if (nodeAmount > 0) {
-            _distributeNodeRewards(nodeAmount);
-        }
+    //     if (lpAmount > 0) {
+    //         ethReceived = etimPoolHelper.swapEtimToEth(lpAmount, msg.sender);
+    //     }
+    //     if (burnAmount > 0) {
+    //         etimToken.transfer(BURN_ADDRESS, burnAmount);
+    //     }
+    //     if (nodeAmount > 0) {
+    //         _distributeNodeRewards(nodeAmount);
+    //     }
 
-        emit TokenSold(msg.sender, etimAmount, ethReceived);
-    }
+    //     emit TokenSold(msg.sender, etimAmount, ethReceived);
+    // }
 
     // =========================================================
     //                   PRICE & DAILY STATS

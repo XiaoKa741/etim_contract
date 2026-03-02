@@ -3,7 +3,6 @@ const { ethers } = require("hardhat");
 async function main() {
     const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     const POOL_MANAGER_ADDRESS = "0x000000000004444c5dc75cB358380D2e3dE08A90";
-    // const POSITION_MANAGER_ADDRESS = "0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e";
     const CREATE2_FACTORY = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
 
     const [deployer, marketInfra, ecoFund, communityFund, airdrop, ethFoundation, t1, t2, t3, t4, t5, t6] = await ethers.getSigners();
@@ -15,7 +14,8 @@ async function main() {
     code = await ethers.provider.getCode(CREATE2_FACTORY);
     if (code === "0x") throw new Error("错误：你 Fork 的网络中找不到 CREATE2_FACTORY");
 
-    // afterSwap(bit6=0x40) + afterSwapReturnDelta(bit4=0x04) = 0x0044
+    // afterSwap(bit6=0x40) + afterSwapReturnDelta(bit2=0x04) = 0x0044
+    // beforeSwap(bit7=0x80) + beforeSwapReturnsDelta(bit3=0x08) =0x0088
     // 用找到的 salt 通过 CREATE2 工厂部署
     // 搜索满足条件的 salt
     const hookFactory = await ethers.getContractFactory("ETIMTaxHook");
@@ -28,10 +28,10 @@ async function main() {
     let foundSalt = null;
     let hookAddress = null;
 
-    for (let salt = 35900n; salt < 1000000n; salt++) {
+    for (let salt = 0n; salt < 1000000n; salt++) {
         const saltHex = ethers.zeroPadValue(ethers.toBeHex(salt), 32);
         const predicted = ethers.getCreate2Address(CREATE2_FACTORY, saltHex, initCodeHash);
-        if ((BigInt(predicted) & 0x3FFFn) === 0x0044n) {
+        if ((BigInt(predicted) & 0x3FFFn) === 0x00CCn) {
             foundSalt = salt;
             hookAddress = predicted;
 
@@ -85,6 +85,7 @@ async function main() {
     console.log("税收HOOK合约:", hookAddress);
     const etimHook = await ethers.getContractAt("ETIMTaxHook", hookAddress)
     console.log("税收HOOK合约验证 buyTaxBps:", await etimHook.buyTaxBps())
+    console.log("税收HOOK合约验证 sellTaxBps:", await etimHook.sellTaxBps())
 
     // ========== 部署ETH/ETIM代币池合约 ==========
     console.log("\n🆗. 部署ETH/ETIM代币池合约...");
@@ -95,6 +96,7 @@ async function main() {
         USDC_ADDRESS,
         hookAddress,
     );
+    await etimPool.waitForDeployment();
     const etimPoolAddress = await etimPool.getAddress();
     console.log("池子HELPER合约地址:", etimPoolAddress);
 
@@ -106,6 +108,7 @@ async function main() {
         etimTokenAddress,
         etimNodeAddress,
         etimPoolAddress,
+        hookAddress,
     );
     await etimMain.waitForDeployment();
     const etimMainAddress = await etimMain.getAddress();
@@ -139,11 +142,11 @@ async function main() {
     // 设置代币合约关联合约地址
     tx = await etimToken.setMainContract(etimMainAddress);
     await tx.wait();
-    console.log("【代币合约】设置主合约地址");
+    console.log("【代币合约】设置main合约");
 
     tx = await etimPool.setMainContract(etimMainAddress);
     await tx.wait();
-    console.log("【池子HELPER合约】设置主合约地址");
+    console.log("【池子HELPER合约】设置main合约");
 
     const priceEtimPerEth = 2000; // 1ETH = 2000ETIM
     const sqrtPriceX96 = BigInt(Math.floor(Math.sqrt(priceEtimPerEth) * 2 ** 96));
@@ -156,6 +159,12 @@ async function main() {
 
     console.log("【池子HOOK合约】设置不收税白名单", etimPoolAddress);
     tx = await etimHook.setExempt(etimPoolAddress, true);
+    await tx.wait();
+    console.log("【池子HOOK合约】设置Token合约", etimPoolAddress);
+    tx = await etimHook.setTokenContract(etimTokenAddress);
+    await tx.wait();
+    console.log("【池子HOOK合约】设置main合约", etimMainAddress);
+    tx = await etimHook.setMainContract(etimMainAddress);
     await tx.wait();
 
     console.log("【池子HELPER合约】添加初始流动性 ETIM/ETH");

@@ -2,11 +2,11 @@
 const { ethers } = require("hardhat");
 
 // forking
-const ETIMMainAddress = '0x560C37Cd680b0816A09846F33BA9D9d15Ca1019C';
-const ETIMTokenAddress = '0x4039De7C4bAa31b0F93ad232c656DC3e8387AE7a';
-const ETIMNodeAddress = '0x1D64Fd9269b4Ca972D544920e1C5423b867D3d23';
-const ETIMPoolAddress = '0x1a0B78E47bB91Bb152D039Fd82816aE72E72Ee54';
-const ETIMHookAddress = '0xe3F8d5F49C2eb1a45352eF1dafB865cA27344044';
+const ETIMMainAddress = '0xe858D94ac68f48fc6d99f333204c8160785B4723';
+const ETIMTokenAddress = '0xb28C1C983Bb584cA4Ff3D9F381Cb23fC5bF0392A';
+const ETIMNodeAddress = '0xCfbCFd6A1847D919aCcb2861957EC54d1BffdA61';
+const ETIMPoolAddress = '0xd51e4Cc6e7891437B6dE33e5196AD206BC6065BA';
+const ETIMHookAddress = '0x7F03C209599616134aA77B86E23A4307fcb1C0Cc';
 const Permit2Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const PositionManagerAddress = '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e';
 const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
@@ -33,10 +33,10 @@ async function main() {
     // console.log('usdc per eth: ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
 
     // 相互转账1
-    // tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("10"));
-    // console.log((await tx.wait()).hash);
-    // tx = await etimToken.connect(b).transfer(a.address, ethers.parseEther("10"));
-    // console.log((await tx.wait()).hash);
+    tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("10"));
+    console.log((await tx.wait()).hash);
+    tx = await etimToken.connect(b).transfer(a.address, ethers.parseEther("10"));
+    console.log((await tx.wait()).hash);
 
     // 相互转账2
     // tx = await etimToken.connect(b).transfer(c.address, ethers.parseEther("10"));
@@ -48,7 +48,7 @@ async function main() {
     // tx = await etimToken.connect(d).transfer(b.address, ethers.parseEther("25"));
     // console.log((await tx.wait()).hash);
 
-    // await participate(a, etimMain);
+    await participate(a, etimMain);
     // await participate(b, etimMain);
     // await participate(c, etimMain);
     // await participate(d, etimMain);
@@ -171,7 +171,7 @@ async function getEtimMainStatus(etimMain) {
     console.log('etimMain 价格(ETIM per ETH): ', ethers.formatEther(await etimMain.ethPriceInEtim()));
     console.log('etimMain 价格(USDC per ETH): ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
     console.log('etimMain 价格(ETIM per USDC): ', ethers.formatEther(await etimMain.etimPerUsd()));
-    console.log('etimMain 某日价格(ETIM per USDC): ', ethers.formatEther(await etimMain.dailyUsdEtimPrice(20512)));
+    console.log('etimMain 某日价格(ETIM per USDC): ', ethers.formatEther(await etimMain.dailyUsdEtimPrice(20514)));
     console.log('etimMain 总激活节点: ', await etimMain.totalActiveNodes());
     console.log('etimMain 激活节点奖励份额: ', ethers.formatEther(await etimMain.rewardPerNode()));
     try {
