@@ -82,7 +82,7 @@ async function main() {
     // console.log((await tx.wait()).hash);
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
-    console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
+    // console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmount()));
 

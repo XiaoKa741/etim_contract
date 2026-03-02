@@ -254,6 +254,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
     }
 
+    // Manual update level
+    function updateReferralLevel() external {
+        _checkAndUpdateLevel(msg.sender);
+    }
+
     // Calculate claimable mining rewards (view)
     function getClaimableAmount() external view returns (uint256) {
         (uint256 etimAmount, ) = _calculatePendingRewards(msg.sender);
