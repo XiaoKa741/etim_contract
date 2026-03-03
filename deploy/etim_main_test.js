@@ -33,10 +33,10 @@ async function main() {
     // console.log('usdc per eth: ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
 
     // 相互转账1
-    tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("10"));
-    console.log((await tx.wait()).hash);
-    tx = await etimToken.connect(b).transfer(a.address, ethers.parseEther("10"));
-    console.log((await tx.wait()).hash);
+    // tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("10"));
+    // console.log((await tx.wait()).hash);
+    // tx = await etimToken.connect(b).transfer(a.address, ethers.parseEther("10"));
+    // console.log((await tx.wait()).hash);
 
     // 相互转账2
     // tx = await etimToken.connect(b).transfer(c.address, ethers.parseEther("10"));
@@ -48,7 +48,7 @@ async function main() {
     // tx = await etimToken.connect(d).transfer(b.address, ethers.parseEther("25"));
     // console.log((await tx.wait()).hash);
 
-    await participate(a, etimMain);
+    // await participate(a, etimMain);
     // await participate(b, etimMain);
     // await participate(c, etimMain);
     // await participate(d, etimMain);
@@ -165,7 +165,7 @@ async function getEtimMainStatus(etimMain) {
         const dailyDepositCap = await etimMain.dailyDepositCap();
         const dailyDepositRate = await etimMain.dailyDepositRate();
         const denominator = await etimMain.FEE_DENOMINATOR();
-        console.log("etimMain 当日deposit(ETH) 限制", ethers.formatEther(dailyDepositCap * dailyDepositRate / denominator));
+        console.log("etimMain 当日deposit(ETH) 限制",  ethers.formatEther(dailyDepositCap), ethers.formatEther(dailyDepositCap * dailyDepositRate / denominator));
     }
     console.log("etimMain deposited(ETH)", ethers.formatEther(await etimMain.totalDeposited()));
     console.log('etimMain 价格(ETIM per ETH): ', ethers.formatEther(await etimMain.ethPriceInEtim()));

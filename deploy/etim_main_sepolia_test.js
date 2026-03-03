@@ -82,7 +82,7 @@ async function main() {
     // console.log((await tx.wait()).hash);
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
-    // console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
+    console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmount()));
 
@@ -115,19 +115,6 @@ async function participate(user, etimMain) {
         console.log("账户余额:", user.address, ethers.formatEther(balance), "ETH");
 
         await getUserInfo(etimMain, user);
-
-        try {
-            // staticCall 模拟执行并尝试获取返回值或错误原因
-            await etimMain.connect(user).deposit.staticCall({
-                value: ethers.parseEther("0.0162")
-            });
-        } catch (error) {
-            console.log("--- 合约报错详情 ---");
-            console.log("错误原因 (Reason):", error.reason);
-            console.log("错误代码 (Code):", error.code);
-            // 如果合约自定义了 Error，可以在这里捕获
-            throw error;
-        }
 
         let estimated = await etimMain.connect(user).deposit.estimateGas({ value: ethers.parseEther("0.0162") });
         console.log("gas预估", estimated);

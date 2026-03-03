@@ -190,6 +190,28 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         int128   outputDelta    = isBuy ? delta.amount1() : delta.amount0();
         Currency outputCurrency = isBuy ? key.currency1  : key.currency0;
 
+        // Selling ETIM direction (zeroForOne = false)
+        if (!isBuy) {
+            // beforeSwap has done!
+            // if (params.amountSpecified > 0) revert ExactOutputNotSupported();
+
+            // exactInput: user specifies how much ETIM to sell
+            uint256 etimIn = uint256(-params.amountSpecified);
+            uint256 toLp   = etimIn * 85 / 100;  // 85% goes to liquidity
+            uint256 toBurn = etimIn * 10 / 100;  // 10% burned
+            uint256 toNode = etimIn - toLp - toBurn; // 5% to node performance
+
+            // Hook take burn+node (can use poolManager.mint/poolManager.burn instead)
+            poolManager.take(key.currency1, address(this), toBurn + toNode);
+            // 10% → burn address
+            IERC20(etimContract).safeTransfer(BURN_ADDRESS, toBurn);
+            // 5% → main contract for node rewards
+            IERC20(etimContract).safeTransfer(mainContract, toNode);
+            // call distribute node performance
+            try IETIMMain(etimContract).distributeNodePerformanceOnEtimSell(toNode) {} catch {}
+            // 85% → had swapped
+        }
+
         // console.log("[_afterSwap] params:"); // DEBUG
         // console.logBool(params.zeroForOne); // DEBUG
         // console.logInt(params.amountSpecified); // DEBUG
@@ -228,14 +250,14 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         // console.log("[_afterSwap] taxAmount to int128:"); // DEBUG
         // console.logInt(taxAmount.toInt128()); // DEBUG
 
-        // Return negative delta → tells V4 that user receives less by this amount
-        return (this.afterSwap.selector, -taxAmount.toInt128());
+        // Return positive delta → tells V4 that user receives less by this amount
+        return (this.afterSwap.selector, taxAmount.toInt128());
     }
 
     /// @notice _beforeSwap: handle additional allocation logic when user sells ETIM
     function _beforeSwap(
         address sender,
-        PoolKey calldata key,
+        PoolKey calldata,
         SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
@@ -272,23 +294,11 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             uint256 toBurn = etimIn * 10 / 100;  // 10% burned
             uint256 toNode = etimIn - toLp - toBurn; // 5% to node performance
 
-            // Pull all ETIM from PoolManager into this contract
-            poolManager.take(key.currency1, address(this), etimIn);
-            // 10% → burn address
-            IERC20(etimContract).safeTransfer(BURN_ADDRESS, toBurn);
-            // 5% → main contract for node rewards
-            IERC20(etimContract).safeTransfer(mainContract, toNode);
-            try IETIMMain(etimContract).distributeNodePerformanceOnEtimSell(toNode) {} catch {}
-            // 85% → return to pool for swap
-            poolManager.sync(key.currency1);
-            IERC20(etimContract).safeTransfer(address(poolManager), toLp);
-            poolManager.settle();
-
-            // Inform PoolManager that actual ETIM input is reduced by (toBurn + toNode)
+            // Inform PoolManager that hook take (toBurn + toNode)
             return (
                 this.beforeSwap.selector,
                 toBeforeSwapDelta(
-                    -int128(int256(toBurn + toNode)),   // Reduced specifiedAmount
+                    int128(int256(toBurn + toNode)),   // Hook take this
                     0
                 ),
                 0

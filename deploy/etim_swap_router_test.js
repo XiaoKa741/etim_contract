@@ -4,13 +4,13 @@ const MIN_PRICE_LIMIT = BigInt("4295128740");
 const MAX_PRICE_LIMIT = BigInt("1461446703485210103287273052203988822378723970341");
 
 const ETIMTokenAddress = '0xb28C1C983Bb584cA4Ff3D9F381Cb23fC5bF0392A';
-const ETIMHookAddress = '0x7F03C209599616134aA77B86E23A4307fcb1C0Cc';
+const ETIMHookAddress = '0x1bfC1176F0B399bFb3F63ea888786bDf2Bce80CC';
 const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
 const SwapRouterTestAddress = '0x6561Fb13599F81C85cE1b89a7d49deEd2Bcc8259'
-const DeploySwapRouter = false;
+const DeploySwapRouter = true;
 
 async function deploy_swap_test() {
-    const PoolSwapTest = await ethers.getContractFactory("SamplePoolSwapTest");
+    const PoolSwapTest = await ethers.getContractFactory("PoolSwapTest");
     const swapRouter = await PoolSwapTest.deploy(PoolManagerAddress);
     await swapRouter.waitForDeployment();
     const swapRouterAddress = await swapRouter.getAddress();
@@ -23,7 +23,7 @@ async function main() {
         await deploy_swap_test();
     } else {
         const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
-        const swapRouter = await ethers.getContractAt("SamplePoolSwapTest", SwapRouterTestAddress);
+        const swapRouter = await ethers.getContractAt("PoolSwapTest", SwapRouterTestAddress);
         {
             // 开启交易
             const hook = await ethers.getContractAt("ETIMTaxHook", ETIMHookAddress);
@@ -39,8 +39,8 @@ async function main() {
             hooks: ETIMHookAddress,
         };
 
-        await testBuyEtim(signer, poolKey, etimToken, swapRouter);
-        // await testSellETIM(signer, etimToken, swapRouter);
+        // await testBuyEtim(signer, poolKey, etimToken, swapRouter);
+        await testSellETIM(signer, poolKey, etimToken, swapRouter);
     }
 }
 
@@ -61,6 +61,10 @@ async function testBuyEtim(signer, poolKey, etimToken, swapRouter) {
             amountSpecified: -ethAmount,           // exactInput，负数
             sqrtPriceLimitX96: MIN_PRICE_LIMIT,
         },
+        {
+            takeClaims: false,
+            settleUsingBurn: false
+        },
         "0x",
         { value: ethAmount }                     // 附带 ETH
     );
@@ -77,13 +81,10 @@ async function testBuyEtim(signer, poolKey, etimToken, swapRouter) {
 
 // 卖出ETIM
 async function testSellETIM(signer, poolKey, etimToken, swapRouter) {
-    const etimAmount = ethers.parseEther("100");
+    const etimAmount = ethers.parseEther("5");
 
     // 先授权 swapRouter 使用 ETIM
-    const approveTx = await etimToken.approve(
-        await swapRouter.getAddress(),
-        ethers.MaxUint256
-    );
+    const approveTx = await etimToken.approve(SwapRouterTestAddress, ethers.MaxUint256);
     await approveTx.wait();
 
     const etimBefore = await etimToken.balanceOf(signer.address);
@@ -98,6 +99,10 @@ async function testSellETIM(signer, poolKey, etimToken, swapRouter) {
             zeroForOne: false,                     // ETIM → ETH
             amountSpecified: -etimAmount,          // exactInput，负数
             sqrtPriceLimitX96: MAX_PRICE_LIMIT,
+        },
+        {
+            takeClaims: false,
+            settleUsingBurn: false
         },
         "0x"
         // 卖出不需要附带 ETH
