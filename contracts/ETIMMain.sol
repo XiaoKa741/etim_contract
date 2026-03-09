@@ -177,8 +177,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Initialize membership level conditions
     function _initializeLevelConditions() private {
         levelConditions[0] = LevelCondition(0,  0,                 0,                 3);
-        levelConditions[1] = LevelCondition(1,  0,                 0 ,                7);   // for test
-        // levelConditions[1] = LevelCondition(5,  50000  * 10**18,  500000  * 10**18,  7);
+        levelConditions[1] = LevelCondition(5,  50000  * 10**18,  500000  * 10**18,  7);
         levelConditions[2] = LevelCondition(10, 100000 * 10**18,  3000000 * 10**18, 10);
         levelConditions[3] = LevelCondition(15, 150000 * 10**18,  5000000 * 10**18, 12);
         levelConditions[4] = LevelCondition(20, 200000 * 10**18,  7000000 * 10**18, 15);
