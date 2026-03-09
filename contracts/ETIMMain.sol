@@ -194,7 +194,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Participation logic
     function _processParticipation(address addr, uint256 ethAmount) private {
         if (users[addr].participationTime != 0) revert AlreadyParticipated();
-        if (users[addr].directReferralCount == 0) revert NoReferralBinding();
+        if (referrerOf[addr] == address(0)) revert NoReferralBinding();
 
         // Check and reset daily ETH deposit limit
         uint256 currentDay = block.timestamp / 1 days;
