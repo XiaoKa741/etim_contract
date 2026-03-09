@@ -18,9 +18,9 @@ import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "@unisw
 
 // import "hardhat/console.sol"; // only for local debugging
 
-// Progress sell — no business logic
 interface IETIMMain {
     function distributeNodePerformanceOnEtimSell(uint256 etimAmount) external;
+    function isGrowthPoolDepleted() external view returns (bool);
 }
 
 /// @notice Uniswap V4 Hook — applies tax on buys/sells; tax is held in this contract and can be withdrawn by owner
@@ -235,8 +235,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         // zeroForOne = false → sell
         bool isBuy = params.zeroForOne;
 
-        // Check trading
-        if (isBuy && !buyEnabled) revert BuyNotEnabled();
+        // Sell check (buy check handled below after mainContract check)
         if (!isBuy && !sellEnabled) revert SellNotEnabled();
 
         // Only exactInput, not support exactOutput
@@ -245,6 +244,12 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         // If business or token contract not set, do nothing
         if (address(0) == mainContract || address(0) == etimContract) {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
+
+        // Buy is allowed when growth pool is depleted (auto) or manually enabled by owner
+        if (isBuy) {
+            bool poolDepleted = IETIMMain(mainContract).isGrowthPoolDepleted();
+            if (!buyEnabled && !poolDepleted) revert BuyNotEnabled();
         }
 
         uint256 taxBps = isBuy ? buyTaxBps : sellTaxBps;
