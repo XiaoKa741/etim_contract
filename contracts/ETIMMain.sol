@@ -672,6 +672,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
 
         pendingAllocationInUsd -= usdValue;
+        if (ethAmount <= pendingAllocationInEth) {
+            pendingAllocationInEth -= ethAmount;
+        } else {
+            pendingAllocationInEth = 0;
+        }
     }
 
     // =========================================================
