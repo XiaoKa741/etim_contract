@@ -645,9 +645,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
         uint256 ethAmount = (usdValue * 10 ** 18) / ethPriceInUsd;
 
-        uint256 nodeEth = (ethAmount * NODE_SHARE) / FEE_DENOMINATOR;
-        uint256 lpEth   = (ethAmount * LP_SHARE)   / FEE_DENOMINATOR;
-        uint256 burnEth = (ethAmount * BURN_SHARE)  / FEE_DENOMINATOR;
+        uint256 nodeEth   = (ethAmount * NODE_SHARE)   / FEE_DENOMINATOR;
+        uint256 lpEth     = (ethAmount * LP_SHARE)     / FEE_DENOMINATOR;
+        uint256 burnEth   = (ethAmount * BURN_SHARE)   / FEE_DENOMINATOR;
+        uint256 rewardEth = ethAmount - nodeEth - lpEth - burnEth;
 
         if (lpEth > 0) {
             etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
@@ -658,6 +659,17 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (nodeEth > 0) {
             uint256 nodeEtim = etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth);
             _distributeNodeRewards(nodeEtim);
+        }
+        if (rewardEth > 0) {
+            uint256 s2Eth        = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
+            uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
+            uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
+            uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
+
+            if (s2Eth > 0)        s2RewardEth         += s2Eth;
+            if (fundationEth > 0) foundationRewardEth += fundationEth;
+            if (potEth > 0)       potRewardEth         += potEth;
+            if (officialEth > 0)  officialRewardEth    += officialEth;
         }
 
         pendingAllocationInUsd -= usdValue;
