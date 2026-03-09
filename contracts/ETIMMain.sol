@@ -202,7 +202,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             dailyDepositDay = currentDay;
             dailyDepositTotal = 0;
         }
-        if (dailyDepositTotal > dailyDepositCap * dailyDepositRate / FEE_DENOMINATOR) revert DailyDepositLimitExceeded();
+        uint256 effectiveCap = (dailyDepositCap == 0)
+            ? etimPoolHelper.getEthReserves()
+            : dailyDepositCap;
+        if (dailyDepositTotal > effectiveCap * dailyDepositRate / FEE_DENOMINATOR) revert DailyDepositLimitExceeded();
 
         // Update prices
         _updateEthUsdPrice();
