@@ -455,7 +455,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 teamTokens      = userInfo.teamTokenBalance;
 
         uint8 newLevel = 0;
-        for (uint8 lvl = 7; lvl >= 1; lvl--) {
+        for (uint8 lvl = 6; lvl >= 1; lvl--) {
             LevelCondition memory cond = levelConditions[lvl];
             if (
                 directReferrals >= cond.minDirectReferrals &&
