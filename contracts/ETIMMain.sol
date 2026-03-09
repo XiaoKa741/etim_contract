@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface IETIMPoolHelper {
     function getEthReserves() external view returns (uint256);
@@ -18,6 +19,8 @@ interface IETIMPoolHelper {
 }
 
 contract ETIMMain is Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     // ERRORS
     error OnlyPoolManager();
     error OnlyTaxHook();
@@ -32,11 +35,9 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     error InvalidPrice();
     error InvalidDelayAmount();
     error GrowthPoolExceeded();
-    error BuyNotEnabled();
-    error SellNotEnabled();
-    error MustSendETH();
-    error InvalidSellAmount();
-    error InsufficientBalance();
+    error ZeroAddress();
+    error NothingToWithdraw();
+    error TransferFailed();
 
     // Other contract
     IERC20          public etimToken;
@@ -57,17 +58,21 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Deposit fee distribution ratios (denominator = 1000)
     uint256 public constant NODE_SHARE = 10;  // 1%
     uint256 public constant LP_SHARE = 690;   // 69%
-    uint256 public constant BURN_SHARE = 300; // 30%
+    uint256 public constant BURN_SHARE = 250; // 25%
+    uint256 public constant REWARD_SHARE = 50; // 5%
     uint256 public constant FEE_DENOMINATOR = 1000;
 
-    // Buy/sell
-    // bool public buyEnabled;
-    // bool public sellEnabled;
+    // Deposit reward distribution ratios
+    uint256 public constant REWARD_S2         = 500; // 50%
+    uint256 public constant REWARD_FOUNDATION = 300; // 30%
+    uint256 public constant REWARD_POT        = 100; // 10%
+    uint256 public constant REWARD_OFFICIAL   = 100; // 10%
 
-    // Sell fee distribution ratios
-    uint256 public constant SELL_LP_RATIO   = 850; // 85%
-    uint256 public constant SELL_BURN_RATIO = 100; // 10%
-    uint256 public constant SELL_NODE_RATIO = 50;  // 5%
+    // Deposit reward stats
+    uint256 public s2RewardEth;
+    uint256 public foundationRewardEth;
+    uint256 public potRewardEth;
+    uint256 public officialRewardEth;
 
     // Delayed allocation
     bool    public delayEnabled = false;
@@ -96,7 +101,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     }
 
     // Price storage
-    mapping(uint256 => uint256) public dailyEthEtimPrice; // day => ETIM per ETH (18 decimals)
+    mapping(uint256 => uint256) public dailyEthEtimPrice;  // day => ETIM per ETH (18 decimals)
     mapping(uint256 => uint256) public dailyUsdEtimPrice;  // day => ETIM per USD (18 decimals)
 
     uint256 public ethPriceInUsd  = 2000 * 10**6;   // 1 ETH = 2000 USD (6 decimals)
@@ -173,13 +178,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     function _initializeLevelConditions() private {
         levelConditions[0] = LevelCondition(0,  0,                 0,                 3);
         levelConditions[1] = LevelCondition(1,  0,                 0 ,                7);   // for test
-        // levelConditions[1] = LevelCondition(5,  100000  * 10**18,  500000  * 10**18,  7);
-        levelConditions[2] = LevelCondition(10, 500000  * 10**18,  3000000 * 10**18, 10);
-        levelConditions[3] = LevelCondition(15, 1000000 * 10**18,  7000000 * 10**18, 12);
-        levelConditions[4] = LevelCondition(20, 1500000 * 10**18, 16000000 * 10**18, 15);
-        levelConditions[5] = LevelCondition(25, 2000000 * 10**18, 25000000 * 10**18, 18);
-        levelConditions[6] = LevelCondition(30, 3000000 * 10**18, 50000000 * 10**18, 20);
-        levelConditions[7] = LevelCondition(40, 3500000 * 10**18, 80000000 * 10**18, 22);
+        // levelConditions[1] = LevelCondition(5,  50000  * 10**18,  500000  * 10**18,  7);
+        levelConditions[2] = LevelCondition(10, 100000 * 10**18,  3000000 * 10**18, 10);
+        levelConditions[3] = LevelCondition(15, 150000 * 10**18,  5000000 * 10**18, 12);
+        levelConditions[4] = LevelCondition(20, 200000 * 10**18,  7000000 * 10**18, 15);
+        levelConditions[5] = LevelCondition(25, 300000 * 10**18,  9000000 * 10**18, 18);
+        levelConditions[6] = LevelCondition(30, 400000 * 10**18, 11000000 * 10**18, 20);
     }
 
     // User deposits ETH to participate
@@ -235,11 +239,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         emit Participated(addr, ethAmount);
     }
 
-    // Allocate ETH according to fee split: 69% LP / 30% burn / 1% nodes
+    // Allocate ETH according to fee split: 69% LP / 25% burn / 5% rewards / 1% nodes
     function _allocateDepositFunds(uint256 ethAmount) private {
-        uint256 nodeEth = (ethAmount * NODE_SHARE) / FEE_DENOMINATOR;
-        uint256 lpEth   = (ethAmount * LP_SHARE)   / FEE_DENOMINATOR;
-        uint256 burnEth = (ethAmount * BURN_SHARE)  / FEE_DENOMINATOR;
+        uint256 nodeEth   = (ethAmount * NODE_SHARE) / FEE_DENOMINATOR;
+        uint256 lpEth     = (ethAmount * LP_SHARE)   / FEE_DENOMINATOR;
+        uint256 burnEth   = (ethAmount * BURN_SHARE)  / FEE_DENOMINATOR;
+        uint256 rewardEth = ethAmount - nodeEth - lpEth - burnEth;
 
         if (lpEth > 0) {
             uint256 halfEth = lpEth / 2;
@@ -251,6 +256,17 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (nodeEth > 0) {
             uint256 nodeEtimAmount = etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth);
             _distributeNodeRewards(nodeEtimAmount);
+        }
+        if (rewardEth > 0) {
+            uint256 s2Eth        = rewardEth * REWARD_S2 / FEE_DENOMINATOR;
+            uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
+            uint256 potEth       = rewardEth * REWARD_POT / FEE_DENOMINATOR;
+            uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
+
+            if(s2Eth > 0)        s2RewardEth += s2Eth;
+            if(fundationEth > 0) foundationRewardEth += fundationEth;
+            if(potEth > 0)       potRewardEth += potEth;
+            if(officialEth > 0)  officialRewardEth += uint256(officialEth);
         }
     }
 
@@ -551,7 +567,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (amount == 0) revert NoRewardsToClaim();
 
         userInfo.pendingNodeRewards = 0;
-        etimToken.transfer(user, amount);
+        etimToken.safeTransfer(user, amount);
     }
 
     // =========================================================
@@ -562,7 +578,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     function _releaseFromGrowthPool(address to, uint256 amount) internal {
         if (growthPoolReleased + amount > GROWTH_POOL_SUPPLY) revert GrowthPoolExceeded();
         growthPoolReleased += amount;
-        etimToken.transfer(to, amount);
+        etimToken.safeTransfer(to, amount);
     }
 
     // Remaining ETIM in growth pool
@@ -574,45 +590,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     function isGrowthPoolDepleted() public view returns (bool) {
         return growthPoolReleased >= GROWTH_POOL_SUPPLY;
     }
-
-    // =========================================================
-    //                       BUY / SELL
-    // =========================================================
-
-    // Buy ETIM with ETH
-    // function buyETIM() external payable returns (uint256 etimReceived) {
-    //     if (!buyEnabled) revert BuyNotEnabled();
-    //     if (msg.value == 0) revert MustSendETH();
-
-    //     uint256 ethAmount  = msg.value;
-    //     etimReceived = etimPoolHelper.swapEthToEtim{value: ethAmount}(ethAmount);
-    //     etimToken.transfer(msg.sender, etimReceived);
-    // }
-
-    // Sell ETIM for ETH
-    // function sellETIM(uint256 etimAmount) external returns (uint256 ethReceived) {
-    //     if (!sellEnabled) revert SellNotEnabled();
-    //     if (etimAmount == 0) revert InvalidSellAmount();
-    //     if (etimToken.balanceOf(msg.sender) < etimAmount) revert InsufficientBalance();
-
-    //     etimToken.transferFrom(msg.sender, address(this), etimAmount);
-
-    //     uint256 lpAmount   = (etimAmount * SELL_LP_RATIO)   / FEE_DENOMINATOR; // 85%
-    //     uint256 burnAmount = (etimAmount * SELL_BURN_RATIO)  / FEE_DENOMINATOR; // 10%
-    //     uint256 nodeAmount = (etimAmount * SELL_NODE_RATIO)  / FEE_DENOMINATOR; // 5%
-
-    //     if (lpAmount > 0) {
-    //         ethReceived = etimPoolHelper.swapEtimToEth(lpAmount, msg.sender);
-    //     }
-    //     if (burnAmount > 0) {
-    //         etimToken.transfer(BURN_ADDRESS, burnAmount);
-    //     }
-    //     if (nodeAmount > 0) {
-    //         _distributeNodeRewards(nodeAmount);
-    //     }
-
-    //     emit TokenSold(msg.sender, etimAmount, ethReceived);
-    // }
 
     // =========================================================
     //                   PRICE & DAILY STATS
@@ -702,6 +679,46 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         dailyDepositRate = rate;
     }
 
+    // withdraw s2 eth
+    function withdrawS2(address payable to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = s2RewardEth;
+        if (amount == 0) revert NothingToWithdraw();
+        s2RewardEth = 0;
+        (bool ok,) = to.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+    }
+
+    // withdraw foundation
+    function withdrawFoundation(address payable to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = foundationRewardEth;
+        if (amount == 0) revert NothingToWithdraw();
+        foundationRewardEth = 0;
+        (bool ok,) = to.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+    }
+
+    // withdraw pot
+    function withdrawPot(address payable to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = potRewardEth;
+        if (amount == 0) revert NothingToWithdraw();
+        potRewardEth = 0;
+        (bool ok,) = to.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+    }
+
+    // withdraw official
+    function withdrawOfficial(address payable to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = officialRewardEth;
+        if (amount == 0) revert NothingToWithdraw();
+        officialRewardEth = 0;
+        (bool ok,) = to.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+    }
+
     // =========================================================
     //                       VIEWS
     // =========================================================
@@ -732,6 +749,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     //                       FOR TEST
     // =========================================================
     function getTestEtimToken(uint256 etimAmount) external nonReentrant {
-        etimToken.transfer(msg.sender, etimAmount);
+        etimToken.safeTransfer(msg.sender, etimAmount);
     }
 }

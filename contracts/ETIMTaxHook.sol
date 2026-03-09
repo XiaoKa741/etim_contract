@@ -41,7 +41,8 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     error InvalidBps();
     error NothingToWithdraw();
     error TransferFailed();
-    error TradingNotEnabled();
+    error BuyNotEnabled();
+    error SellNotEnabled();
     error ExactOutputNotSupported();
     error AlreadySet();
 
@@ -49,14 +50,6 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     //                        EVENTS
     // =========================================================
 
-    event TaxCollected(
-        PoolId  indexed poolId,
-        address indexed trader,
-        address indexed currency,
-        uint256 taxAmount,
-        bool    isBuy
-    );
-    event TaxWithdrawn(address indexed currency, uint256 amount, address indexed to);
     event TaxRateUpdated(uint256 buyBps, uint256 sellBps);
     event ExemptUpdated(address indexed account, bool exempt);
     event OwnershipTransferStarted(address indexed currentOwner, address indexed pendingOwner);
@@ -92,7 +85,8 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
 
     address public owner;
     address public pendingOwner;
-    bool    public tradingEnabled;
+    bool    public buyEnabled;
+    bool    public sellEnabled;
 
     // =========================================================
     //                  WHITELIST (EXEMPT ADDRESSES)
@@ -102,11 +96,17 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     mapping(address => bool) public isExempt;
 
     // =========================================================
-    //                  TAX ACCUMULATOR
+    //                  TAX ASSIGN
     // =========================================================
 
-    /// @notice currency => accumulated tax balance
-    mapping(address => uint256) public taxBalance;
+    /// @notice buyTax official record
+    uint256 public buyTax;
+
+    /// @notice sellTax: 50% burn, 17% to S6, 17% to Foundation, 16% to Official
+    uint256 public sellTaxToBurn;
+    uint256 public sellTaxToS6;
+    uint256 public sellTaxToFundation;
+    uint256 public sellTaxToOfficial;
 
     // =========================================================
     //                      CONSTRUCTOR
@@ -162,10 +162,10 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
 
     /// @notice _afterSwap: calculate tax, deduct from user output, and hold in this contract
     function _afterSwap(
-        address sender,
-        PoolKey calldata key,
-        SwapParams calldata params,
-        BalanceDelta delta,
+        address /* sender */,
+        PoolKey calldata /* key */,
+        SwapParams calldata /* params */ ,
+        BalanceDelta /* delta */,
         bytes calldata
     )
         internal
@@ -173,15 +173,13 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         whenNotPaused
         returns (bytes4, int128)
     {
+        return (this.afterSwap.selector, 0);
+        /*
         // console.log("[_afterSwap] ENTER"); // DEBUG
         // Skip for whitelisted addresses
         if (isExempt[sender]) {
             // console.log("[_afterSwap] EXIT WHITE LIST"); // DEBUG
             return (this.afterSwap.selector, 0);
-        }
-        // Enforce trading status
-        if (!tradingEnabled) {
-            revert TradingNotEnabled();
         }
 
         // zeroForOne = true  → buy, output is currency1
@@ -190,37 +188,9 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         int128   outputDelta    = isBuy ? delta.amount1() : delta.amount0();
         Currency outputCurrency = isBuy ? key.currency1  : key.currency0;
 
-        // Selling ETIM direction (zeroForOne = false)
-        if (!isBuy) {
-            // beforeSwap has done!
-            // if (params.amountSpecified > 0) revert ExactOutputNotSupported();
-
-            // exactInput: user specifies how much ETIM to sell
-            uint256 etimIn = uint256(-params.amountSpecified);
-            uint256 toLp   = etimIn * 85 / 100;  // 85% goes to liquidity
-            uint256 toBurn = etimIn * 10 / 100;  // 10% burned
-            uint256 toNode = etimIn - toLp - toBurn; // 5% to node performance
-
-            // Hook take burn+node (can use poolManager.mint/poolManager.burn instead)
-            poolManager.take(key.currency1, address(this), toBurn + toNode);
-            // 10% → burn address
-            IERC20(etimContract).safeTransfer(BURN_ADDRESS, toBurn);
-            // 5% → main contract for node rewards
-            IERC20(etimContract).safeTransfer(mainContract, toNode);
-            // call distribute node performance
-            try IETIMMain(etimContract).distributeNodePerformanceOnEtimSell(toNode) {} catch {}
-            // 85% → had swapped
-        }
-
-        // console.log("[_afterSwap] params:"); // DEBUG
-        // console.logBool(params.zeroForOne); // DEBUG
-        // console.logInt(params.amountSpecified); // DEBUG
-
-        // console.log("[_afterSwap] outputDelta:"); // DEBUG
-        // console.logInt(delta.amount0()); // DEBUG
-        // console.logInt(delta.amount1()); // DEBUG
-        // console.logAddress(Currency.unwrap(key.currency0)); // DEBUG
-        // console.logAddress(Currency.unwrap(key.currency1)); // DEBUG
+        // Check trading
+        if (isBuy && !buyEnabled) revert BuyNotEnabled();
+        if (!isBuy && !sellEnabled) revert SellNotEnabled();
 
         // Only tax positive output (i.e., user actually receives tokens)
         if (outputDelta <= 0) {
@@ -240,24 +210,15 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         // Take the tax amount from PoolManager into this contract
         poolManager.take(outputCurrency, address(this), taxAmount);
 
-        // Record accounting
-        address currencyAddr = Currency.unwrap(outputCurrency);
-        taxBalance[currencyAddr] += taxAmount;
-
-        emit TaxCollected(key.toId(), sender, currencyAddr, taxAmount, isBuy);
-        // console.log("[_afterSwap] EXIT NOT WHITE LIST"); // DEBUG
-        // console.log("[_afterSwap] taxAmount:", taxAmount); // DEBUG
-        // console.log("[_afterSwap] taxAmount to int128:"); // DEBUG
-        // console.logInt(taxAmount.toInt128()); // DEBUG
-
         // Return positive delta → tells V4 that user receives less by this amount
         return (this.afterSwap.selector, taxAmount.toInt128());
+        */
     }
 
     /// @notice _beforeSwap: handle additional allocation logic when user sells ETIM
     function _beforeSwap(
         address sender,
-        PoolKey calldata,
+        PoolKey calldata key,
         SwapParams calldata params,
         bytes calldata
     ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
@@ -268,98 +229,61 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             // console.log("[_beforeSwap] EXIT WHITE LIST"); // DEBUG
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
-        // Enforce trading status
-        if (!tradingEnabled) {
-            revert TradingNotEnabled();
-        }
+
+        // currency0 < currency1 (ETH/ETIM)
+        // zeroForOne = true  → buy
+        // zeroForOne = false → sell
+        bool isBuy = params.zeroForOne;
+
+        // Check trading
+        if (isBuy && !buyEnabled) revert BuyNotEnabled();
+        if (!isBuy && !sellEnabled) revert SellNotEnabled();
+
+        // Only exactInput, not support exactOutput
+        if (params.amountSpecified > 0) revert ExactOutputNotSupported();
 
         // If business or token contract not set, do nothing
         if (address(0) == mainContract || address(0) == etimContract) {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // console.log("[_beforeSwap] params:"); // DEBUG
-        // console.logBool(params.zeroForOne); // DEBUG
-        // console.logInt(params.amountSpecified); // DEBUG
-
-        // Selling ETIM direction (zeroForOne = false)
-        if (!params.zeroForOne) {
-
-            // Disallow exactOutput mode (where output ETH is specified and input ETIM is derived)
-            if (params.amountSpecified > 0) revert ExactOutputNotSupported();
-
-            // exactInput: user specifies how much ETIM to sell
-            uint256 etimIn = uint256(-params.amountSpecified);
-            uint256 toLp   = etimIn * 85 / 100;  // 85% goes to liquidity
-            uint256 toBurn = etimIn * 10 / 100;  // 10% burned
-            uint256 toNode = etimIn - toLp - toBurn; // 5% to node performance
-
-            // Inform PoolManager that hook take (toBurn + toNode)
-            return (
-                this.beforeSwap.selector,
-                toBeforeSwapDelta(
-                    int128(int256(toBurn + toNode)),   // Hook take this
-                    0
-                ),
-                0
-            );
+        uint256 taxBps = isBuy ? buyTaxBps : sellTaxBps;
+        if (taxBps == 0) {
+            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-    }
-
-    // =========================================================
-    //                    WITHDRAW TAX
-    // =========================================================
-
-    /// @notice Owner withdraws all accumulated tax of a given currency
-    /// @param  currency  Token address (address(0) = native ETH)
-    /// @param  to        Recipient address
-    function withdrawTax(address currency, address to)
-        external
-        onlyOwner
-        nonReentrant
-    {
-        if (to == address(0)) revert ZeroAddress();
-
-        uint256 amount = taxBalance[currency];
-        if (amount == 0) revert NothingToWithdraw();
-
-        taxBalance[currency] = 0;
-        _transferOut(currency, to, amount);
-
-        emit TaxWithdrawn(currency, amount, to);
-    }
-
-    /// @notice Owner withdraws partial tax of a given currency
-    /// @param  currency  Token address (address(0) = native ETH)
-    /// @param  amount    Amount to withdraw
-    /// @param  to        Recipient address
-    function withdrawTaxPartial(address currency, uint256 amount, address to)
-        external
-        onlyOwner
-        nonReentrant
-    {
-        if (to == address(0)) revert ZeroAddress();
-        if (amount == 0 || amount > taxBalance[currency]) revert NothingToWithdraw();
-
-        taxBalance[currency] -= amount;
-        _transferOut(currency, to, amount);
-
-        emit TaxWithdrawn(currency, amount, to);
-    }
-
-    // =========================================================
-    //                  INTERNAL TRANSFER
-    // =========================================================
-
-    function _transferOut(address currency, address to, uint256 amount) internal {
-        if (currency == address(0)) {
-            (bool ok,) = to.call{value: amount}("");
-            if (!ok) revert TransferFailed();
+        uint256 inAmount = uint256(-params.amountSpecified);
+        uint256 taxAmount = (inAmount * taxBps) / BPS_DENOMINATOR;
+        if (isBuy) {
+            // mint/burn
+            // poolManager.mint(address(this), key.currency0.toId(), taxAmount);
+            poolManager.take(key.currency0, address(this), taxAmount);
+            // assign
+            buyTax += taxAmount;
         } else {
-            IERC20(currency).safeTransfer(to, amount);
+            // poolManager.mint(address(this), key.currency1.toId(), taxAmount);
+            poolManager.take(key.currency1, address(this), taxAmount);
+            // assign
+            uint256 toS6        = taxAmount * 17 / 100;
+            uint256 toFundation = taxAmount * 17 / 100;
+            uint256 toOfficial  = taxAmount * 16 / 100;
+            uint256 toBurn      = taxAmount - toS6 - toFundation - toOfficial;
+
+            sellTaxToS6        += toS6;
+            sellTaxToFundation += toFundation;
+            sellTaxToOfficial  += toOfficial;
+            sellTaxToBurn      += toBurn;
         }
+
+        // Inform PoolManager that hook take (taxAmount)
+        return (
+            this.beforeSwap.selector,
+            toBeforeSwapDelta(
+                int128(int256(taxAmount)),   // Hook take this
+                0
+            ),
+            0
+        );
     }
 
     // =========================================================
@@ -381,9 +305,14 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         emit ExemptUpdated(account, exempt);
     }
 
-    /// @notice Enable/disable trading for non-exempt addresses
-    function setTradingEnabled(bool enabled) external onlyOwner {
-        tradingEnabled = enabled;
+    /// @notice Enable/disable buy for non-exempt addresses
+    function setBuyEnabled(bool enabled) external onlyOwner {
+        buyEnabled = enabled;
+    }
+
+    /// @notice Enable/disable sell for non-exempt addresses
+    function setSellEnabled(bool enabled) external onlyOwner {
+        sellEnabled = enabled;
     }
 
     /// @notice Set the ETIM token contract address (only once, by owner)
@@ -399,6 +328,43 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         if (_mainContract == address(0)) revert ZeroAddress();
         emit MainContractUpdated(mainContract, _mainContract);
         mainContract = _mainContract;
+    }
+
+    /// @notice withdraw s6 etim tax (only owner)
+    function withdrawSellTaxS6(address to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = sellTaxToS6;
+        if (amount == 0) revert NothingToWithdraw();
+        sellTaxToS6 = 0;
+        IERC20(etimContract).safeTransfer(to, amount);
+    }
+
+    /// @notice withdraw official etim tax (only owner)
+    function withdrawSellTaxOfficial(address to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = sellTaxToOfficial;
+        if (amount == 0) revert NothingToWithdraw();
+        sellTaxToOfficial = 0;
+        IERC20(etimContract).safeTransfer(to, amount);
+    }
+
+    /// @notice withdraw foundation etim tax (only owner)
+    function withdrawSellTaxFundation(address to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = sellTaxToFundation;
+        if (amount == 0) revert NothingToWithdraw();
+        sellTaxToFundation = 0;
+        IERC20(etimContract).safeTransfer(to, amount);
+    }
+
+    /// @notice withdraw buy eth tax (only owner)
+    function withdrawBuyTax(address payable to) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        uint256 amount = buyTax;
+        if (amount == 0) revert NothingToWithdraw();
+        buyTax = 0;
+        (bool ok,) = to.call{value: amount}("");
+        if (!ok) revert TransferFailed();
     }
 
     function pause()   external onlyOwner { _pause(); }

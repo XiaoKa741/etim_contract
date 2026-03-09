@@ -564,14 +564,13 @@ contract ETIMPoolHelper is IUnlockCallback {
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
         int24 spacing     = etimEthPoolKey.tickSpacing; // 60
-        int24 range       = 2400;                       // ±10%
-        int24 currentTick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+        // int24 range       = 4055; // ±50% in ticks (same as original)
+        // int24 currentTick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);
+        // tickLower = ((currentTick - range) / spacing) * spacing;
+        // tickUpper = ((currentTick + range) / spacing) * spacing;
 
-        tickLower = ((currentTick - range) / spacing) * spacing;
-        tickUpper = ((currentTick + range) / spacing) * spacing;
-
-        if (tickLower < TickMath.MIN_TICK) tickLower = TickMath.MIN_TICK;
-        if (tickUpper > TickMath.MAX_TICK) tickUpper = TickMath.MAX_TICK;
+        tickLower = (TickMath.MIN_TICK / spacing) * spacing;
+        tickUpper = (TickMath.MAX_TICK / spacing) * spacing;
     }
 
     // =========================================================

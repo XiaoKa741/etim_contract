@@ -29,6 +29,7 @@ async function main() {
     let hookAddress = null;
 
     for (let salt = 0n; salt < 1000000n; salt++) {
+        // console.log("\t", salt.toString());
         const saltHex = ethers.zeroPadValue(ethers.toBeHex(salt), 32);
         const predicted = ethers.getCreate2Address(CREATE2_FACTORY, saltHex, initCodeHash);
         if ((BigInt(predicted) & 0x3FFFn) === 0x00CCn) {

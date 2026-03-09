@@ -7,6 +7,7 @@ module.exports = {
   solidity: {
     version: "0.8.28",
     settings: {
+      viaIR: true,
       evmVersion: "cancun",  // For PoolSwapTest
       optimizer: {
         enabled: true,
