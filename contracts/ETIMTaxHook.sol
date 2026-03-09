@@ -357,6 +357,14 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         IERC20(etimContract).safeTransfer(to, amount);
     }
 
+    /// @notice burn accumulated sell tax burn portion (only owner)
+    function burnSellTax() external onlyOwner nonReentrant {
+        uint256 amount = sellTaxToBurn;
+        if (amount == 0) revert NothingToWithdraw();
+        sellTaxToBurn = 0;
+        IERC20(etimContract).safeTransfer(BURN_ADDRESS, amount);
+    }
+
     /// @notice withdraw buy eth tax (only owner)
     function withdrawBuyTax(address payable to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
