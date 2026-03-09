@@ -286,8 +286,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         UserInfo storage user = users[msg.sender];
         if (user.participationTime == 0) revert NotParticipated();
 
-        uint256 remainingValueInUsd = user.investedValueInUsd - user.claimedValueInUsd;
-        if (remainingValueInUsd == 0) revert NoRemainingValue();
+        uint256 totalQuotaInUsd = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(msg.sender);
+        if (user.claimedValueInUsd >= totalQuotaInUsd) revert NoRemainingValue();
 
         _checkAndUpdateLevel(msg.sender);
         
