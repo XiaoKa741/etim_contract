@@ -98,7 +98,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 syncedNodeCount;        // Node count at last sync
         uint256 nodeRewardDebt;         // Accumulated reward debt for node accounting
         uint256 pendingNodeRewards;     // Settled but unclaimed node rewards
-        uint256 settledEtimFromCheckpoint; // ETIM flushed at old accel rate when level changes
     }
 
     // Price storage
@@ -297,30 +296,22 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (user.claimedValueInUsd >= totalQuotaInUsd && user.settledEtimFromCheckpoint == 0) revert NoRemainingValue();
 
         _checkAndUpdateLevel(msg.sender);
-
-        // Include ETIM settled at old acceleration rate before last level change
-        uint256 checkpointEtim = user.settledEtimFromCheckpoint;
-        if (checkpointEtim > 0) user.settledEtimFromCheckpoint = 0;
-
+        
         (uint256 pendingEtim, uint256 claimableUsd) = _calculatePendingRewards(msg.sender);
-        pendingEtim += checkpointEtim;
+        if (pendingEtim == 0) revert NoRewardsToClaim();
 
-        // Always advance USD accounting so users aren't stuck when growth pool is depleted
-        if (claimableUsd > 0) {
-            user.claimedValueInUsd += claimableUsd;
-            user.lastClaimTime = block.timestamp;
-        }
+        // Update user state
+        user.claimedValueInUsd += claimableUsd;
+        user.lastClaimTime = block.timestamp;
 
-        // Cap ETIM by remaining growth pool supply
+        // Check and send rewards
         uint256 growthPoolRemain = GROWTH_POOL_SUPPLY - growthPoolReleased;
-        uint256 transferEtim = pendingEtim > growthPoolRemain ? growthPoolRemain : pendingEtim;
-        if (transferEtim == 0) revert NoRewardsToClaim();
-
-        _releaseFromGrowthPool(msg.sender, transferEtim);
+        pendingEtim = pendingEtim > growthPoolRemain ? growthPoolRemain : pendingEtim;
+        _releaseFromGrowthPool(msg.sender, pendingEtim);
 
         _checkAndUpdateLevel(msg.sender);
 
-        emit ETIMClaimed(msg.sender, transferEtim, claimableUsd);
+        emit ETIMClaimed(msg.sender, pendingEtim, claimableUsd);
     }
 
     // Convert USD value to ETIM using the price recorded on a given day
@@ -337,6 +328,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         UserInfo storage user = users[userAddr];
 
         if (user.participationTime == 0) return (0, 0);
+        if (isGrowthPoolDepleted()) return (0, 0);
 
         uint256 totalQuotaInUsd    = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(userAddr);
         uint256 remainingValueInUsd = totalQuotaInUsd - user.claimedValueInUsd;
@@ -482,13 +474,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
 
         if (userInfo.level != newLevel) {
-            // Flush pending rewards at old acceleration rate before changing level
-            (uint256 etimOwed, uint256 usdOwed) = _calculatePendingRewards(user);
-            if (usdOwed > 0) {
-                userInfo.settledEtimFromCheckpoint += etimOwed;
-                userInfo.claimedValueInUsd         += usdOwed;
-                userInfo.lastClaimTime              = block.timestamp;
-            }
             userInfo.level = newLevel;
             emit LevelUpgraded(user, newLevel);
         }
