@@ -148,10 +148,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (msg.sender != address(etimPoolHelper)) revert OnlyPoolManager();
         _;
     }
-    modifier onlyTaxHookContract() {
-        if (msg.sender != address(etimTaxHook)) revert OnlyTaxHook();
-        _;
-    }
 
     event Participated(address indexed user, uint256 ethAmount);
     event ETIMClaimed(address indexed user, uint256 etimAmount, uint256 usdValue);
@@ -176,7 +172,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     // Initialize membership level conditions
     function _initializeLevelConditions() private {
-        levelConditions[0] = LevelCondition(0,  0,                 0,                 3);
+        levelConditions[0] = LevelCondition(0,  0,                0,                 3);
         levelConditions[1] = LevelCondition(5,  50000  * 10**18,  500000  * 10**18,  7);
         levelConditions[2] = LevelCondition(10, 100000 * 10**18,  3000000 * 10**18, 10);
         levelConditions[3] = LevelCondition(15, 150000 * 10**18,  5000000 * 10**18, 12);
@@ -193,9 +189,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Participation logic
     function _processParticipation(address addr, uint256 ethAmount) private {
         if (users[addr].participationTime != 0) revert AlreadyParticipated();
-        // Allow participation if user has any referral relationship:
-        // either they were invited by someone (referrerOf != 0)
-        // or they invited someone first (directReferralCount > 0)
+        // Allow participation if user has any referral relationship
         if (referrerOf[addr] == address(0) && users[addr].directReferralCount == 0) revert NoReferralBinding();
 
         // Check and reset daily ETH deposit limit
@@ -283,6 +277,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Calculate claimable mining rewards (view)
     function getClaimableAmount() external view returns (uint256) {
         (uint256 etimAmount, ) = _calculatePendingRewards(msg.sender);
+
+        uint256 growthPoolRemain = GROWTH_POOL_SUPPLY - growthPoolReleased;
+        etimAmount = growthPoolRemain > etimAmount ? etimAmount : growthPoolRemain;
+        
         return etimAmount;
     }
 
@@ -308,6 +306,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         pendingEtim = pendingEtim > growthPoolRemain ? growthPoolRemain : pendingEtim;
         _releaseFromGrowthPool(msg.sender, pendingEtim);
 
+        // Etim token change
+        _updateTeamTokenBalance(address(this), msg.sender, pendingEtim);
         _checkAndUpdateLevel(msg.sender);
 
         emit ETIMClaimed(msg.sender, pendingEtim, claimableUsd);
@@ -329,7 +329,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (user.participationTime == 0) return (0, 0);
         if (isGrowthPoolDepleted()) return (0, 0);
 
-        uint256 totalQuotaInUsd    = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(userAddr);
+        uint256 totalQuotaInUsd     = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(userAddr);
         uint256 remainingValueInUsd = totalQuotaInUsd - user.claimedValueInUsd;
         if (remainingValueInUsd == 0) return (0, 0);
 
@@ -375,11 +375,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
                 lastEthUsdPriceTime = block.timestamp;
             }
         }
-    }
-
-    // HOOK sell callback (called by Tax Hook contract)
-    function distributeNodePerformanceOnEtimSell(uint256 etimAmount) external onlyTaxHookContract {
-        _distributeNodeRewards(etimAmount);
     }
 
     // ETIM token transfer callback (called by ETIM token contract)
