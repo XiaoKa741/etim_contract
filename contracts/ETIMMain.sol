@@ -283,7 +283,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Calculate claimable mining rewards (view)
     function getClaimableAmount() external view returns (uint256) {
         (uint256 etimAmount, ) = _calculatePendingRewards(msg.sender);
-        return etimAmount + users[msg.sender].settledEtimFromCheckpoint;
+        return etimAmount;
     }
 
     // Claim mining rewards
@@ -292,8 +292,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (user.participationTime == 0) revert NotParticipated();
 
         uint256 totalQuotaInUsd = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(msg.sender);
-        // Allow claim if there is unsettled checkpoint ETIM even when USD quota is exhausted
-        if (user.claimedValueInUsd >= totalQuotaInUsd && user.settledEtimFromCheckpoint == 0) revert NoRemainingValue();
+        if (user.claimedValueInUsd >= totalQuotaInUsd) revert NoRemainingValue();
 
         _checkAndUpdateLevel(msg.sender);
         
