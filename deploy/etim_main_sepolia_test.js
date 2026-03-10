@@ -2,11 +2,11 @@
 const { ethers } = require("hardhat");
 
 // sepolia
-const ETIMMainAddress = '0x381731f8b4eDE3fBDE912b7Be984d2003fDABD4b';
-const ETIMTokenAddress = '0x114BB90dF5D51a3564C998323cE7b011a4feE513';
-const ETIMNodeAddress = '0xb06c9247f70f0DB895313991152b76Aa3E135EC1';
-const ETIMPoolAddress = '0x6832eD0591443740b321A97A516841c4116DFc51';
-const ETIMHookAddress = '0x491d7dDb01736EE976410D06d44204dA407600Cc';
+const ETIMMainAddress = '0xe5fb695741B199479C4655E92bEd992B43d77505';
+const ETIMTokenAddress = '0x8A56a8D49F8CD598701DA0f43FdACDFd60AaF10f';
+const ETIMNodeAddress = '0x61b2db0Eb42f8bF14b14E6cf89Af26f1495441A2';
+const ETIMPoolAddress = '0x45f89e9030ca813E7A5Ca5263356EaB438EA95B9';
+const ETIMHookAddress = '0x2b6EB3356d64C98ad5d7A72EA4363ad12FF080CC';
 const Permit2Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const PositionManagerAddress = '0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4';
 const PoolManagerAddress = '0xE03A1074c86CFeDd5C142C4F04F1a1536e203543';
@@ -26,6 +26,10 @@ async function main() {
 
     // tx = await etimMain.updateDailyPrice();
     // await tx.wait();
+
+    // tx = await etimMain.getTestEtimToken(ethers.parseEther("100"));
+    // await tx.wait();
+
     // console.log('etim per eth: ', ethers.formatEther(await etimMain.ethPriceInEtim()));
     // console.log('usdc per eth: ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
 
@@ -61,8 +65,8 @@ async function main() {
     // console.log("main合约etim代币", ethers.formatEther(await etimToken.balanceOf(ETIMMainAddress)));
     // console.log("0地址etim代币", ethers.formatEther(await etimToken.balanceOf("0x000000000000000000000000000000000000dEaD")));
 
-    await getEtimMainStatus(etimMain);
-    await getUserInfo(etimMain, a);
+    // await getEtimMainStatus(etimMain);
+    // await getUserInfo(etimMain, a);
     // await getUserInfo(etimMain, b);
     // await getUserInfo(etimMain, c);
     // await getUserInfo(etimMain, d);
@@ -82,7 +86,7 @@ async function main() {
     // console.log((await tx.wait()).hash);
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
-    console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
+    // console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmount()));
 
