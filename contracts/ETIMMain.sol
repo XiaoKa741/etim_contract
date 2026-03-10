@@ -447,10 +447,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
                 users[referrer].directReferralCount++;
                 users[referrer].teamTokenBalance += inviteePreBalance;
-                // Propagate invitee's pre-transfer balance to referrer's ancestors.
-                // The transfer delta (+value for invitee) will be propagated separately
-                // by _updateTeamTokenBalance, so ancestors end up with inviteeCurrentBalance.
-                _propagateTeamBalanceChange(referrer, int256(inviteePreBalance));
 
                 emit ReferralAdded(referrer, invitee, block.timestamp);
 
@@ -517,42 +513,19 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
     }
 
-    // Propagate team balance change upward up to MAX_PROPAGATION_DEPTH levels.
-    // Stops early if a cycle is detected (e.g. A→B→C→A) to prevent infinite loops.
-    uint8 private constant MAX_PROPAGATION_DEPTH = 5;
-
+    // Propagate team balance change to direct referrer
     function _propagateTeamBalanceChange(address user, int256 delta) private {
         if (delta == 0) return;
+        address referrer = referrerOf[user];
+        if (referrer == address(0)) return;
 
-        // Track visited addresses to detect referral-chain cycles
-        address[MAX_PROPAGATION_DEPTH + 1] memory visited;
-        visited[0] = user;
-        uint8 visitedCount = 1;
-
-        address current = user;
-        for (uint8 i = 0; i < MAX_PROPAGATION_DEPTH; i++) {
-            address referrer = referrerOf[current];
-            if (referrer == address(0)) break;
-
-            // Cycle detection: stop if referrer was already visited in this chain
-            bool isCycle = false;
-            for (uint8 j = 0; j < visitedCount; j++) {
-                if (visited[j] == referrer) { isCycle = true; break; }
-            }
-            if (isCycle) break;
-
-            visited[visitedCount] = referrer;
-            visitedCount++;
-
-            if (delta > 0) {
-                users[referrer].teamTokenBalance += uint256(delta);
-            } else {
-                uint256 absDelta = uint256(-delta);
-                users[referrer].teamTokenBalance = users[referrer].teamTokenBalance >= absDelta
-                    ? users[referrer].teamTokenBalance - absDelta
-                    : 0;
-            }
-            current = referrer;
+        if (delta > 0) {
+            users[referrer].teamTokenBalance += uint256(delta);
+        } else {
+            uint256 absDelta = uint256(-delta);
+            users[referrer].teamTokenBalance = users[referrer].teamTokenBalance >= absDelta
+                ? users[referrer].teamTokenBalance - absDelta
+                : 0;
         }
     }
 
