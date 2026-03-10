@@ -4,7 +4,7 @@ const MIN_PRICE_LIMIT = BigInt("4295128740");
 const MAX_PRICE_LIMIT = BigInt("1461446703485210103287273052203988822378723970341");
 
 const ETIMTokenAddress = '0xb28C1C983Bb584cA4Ff3D9F381Cb23fC5bF0392A';
-const ETIMHookAddress = '0xAB24D7E2531c779BB30fA1d1f3Ea373024Ef00CC';
+const ETIMHookAddress = '0x1bfC1176F0B399bFb3F63ea888786bDf2Bce80CC';
 const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
 const SwapRouterTestAddress = '0x6561Fb13599F81C85cE1b89a7d49deEd2Bcc8259'
 const DeploySwapRouter = true;
@@ -26,10 +26,9 @@ async function main() {
         const swapRouter = await ethers.getContractAt("PoolSwapTest", SwapRouterTestAddress);
         {
             // 开启交易
-            // const hook = await ethers.getContractAt("ETIMTaxHook", ETIMHookAddress);
-            // tx = await hook.connect(signer).setBuyEnabled(true);
-            // tx = await hook.connect(signer).setSellEnabled(true);
-            // await tx.wait();
+            const hook = await ethers.getContractAt("ETIMTaxHook", ETIMHookAddress);
+            tx = await hook.connect(signer).setTradingEnabled(true);
+            await tx.wait();
         }
 
         const poolKey = {
@@ -40,8 +39,8 @@ async function main() {
             hooks: ETIMHookAddress,
         };
 
-        await testBuyEtim(signer, poolKey, etimToken, swapRouter);
-        // await testSellETIM(signer, poolKey, etimToken, swapRouter);
+        // await testBuyEtim(signer, poolKey, etimToken, swapRouter);
+        await testSellETIM(signer, poolKey, etimToken, swapRouter);
     }
 }
 

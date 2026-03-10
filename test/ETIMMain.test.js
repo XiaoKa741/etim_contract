@@ -549,18 +549,24 @@ describe("ETIMMain — full integration tests", function () {
             expect(infoAfter.teamTokenBalance).to.not.equal(infoBefore.teamTokenBalance);
         });
 
-        it("H2: 3-level chain propagates 2 hops", async function () {
+        it("H2: direct referral's balance change is seen by referrer (1-hop propagation)", async function () {
             const { etimToken, etimMain, alice, bob, carol, dave } = await deployFixture();
-            // alice → bob → carol (two levels deep)
+            // alice → bob → carol
             await setupReferral(etimToken, alice, bob);   // alice referrer of bob
             await setupReferral(etimToken, bob, carol);   // bob referrer of carol
 
             const aliceBefore = (await etimMain.users(alice.address)).teamTokenBalance;
-            // carol transfers tokens to dave (outside alice's team) — alice's team total decreases
-            await (await etimToken.connect(carol).transfer(dave.address, ethers.parseEther("5"))).wait();
+            const bobBefore    = (await etimMain.users(bob.address)).teamTokenBalance;
+
+            // bob transfers to dave (outside the chain) — alice sees bob's balance drop (1 hop)
+            await (await etimToken.connect(bob).transfer(dave.address, ethers.parseEther("5"))).wait();
             const aliceAfter = (await etimMain.users(alice.address)).teamTokenBalance;
-            // alice should see carol's balance decrease (2 hops up)
+            const bobAfter   = (await etimMain.users(bob.address)).teamTokenBalance;
+
+            // alice (bob's referrer) sees the 1-hop change
             expect(aliceAfter).to.not.equal(aliceBefore);
+            // carol's balance didn't change, so bob's teamTokenBalance is unaffected
+            expect(bobAfter).to.equal(bobBefore);
         });
     });
 
