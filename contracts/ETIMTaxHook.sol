@@ -18,8 +18,8 @@ import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "@unisw
 
 // import "hardhat/console.sol"; // only for local debugging
 
+// Progress sell — no business logic
 interface IETIMMain {
-    function distributeNodePerformanceOnEtimSell(uint256 etimAmount) external;
     function isGrowthPoolDepleted() external view returns (bool);
 }
 
@@ -85,8 +85,8 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
 
     address public owner;
     address public pendingOwner;
-    bool    public buyEnabled;
-    bool    public sellEnabled;
+    // bool    public buyEnabled;
+    // bool    public sellEnabled;
 
     // =========================================================
     //                  WHITELIST (EXEMPT ADDRESSES)
@@ -235,8 +235,10 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         // zeroForOne = false → sell
         bool isBuy = params.zeroForOne;
 
-        // Sell check (buy check handled below after mainContract check)
-        if (!isBuy && !sellEnabled) revert SellNotEnabled();
+        // Check trading
+        // if (isBuy && !buyEnabled) revert BuyNotEnabled();
+        // if (!isBuy && !sellEnabled) revert SellNotEnabled();
+        if(isBuy && !(IETIMMain(mainContract).isGrowthPoolDepleted())) revert BuyNotEnabled();
 
         // Only exactInput, not support exactOutput
         if (params.amountSpecified > 0) revert ExactOutputNotSupported();
@@ -244,12 +246,6 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         // If business or token contract not set, do nothing
         if (address(0) == mainContract || address(0) == etimContract) {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-        }
-
-        // Buy is allowed when growth pool is depleted (auto) or manually enabled by owner
-        if (isBuy) {
-            bool poolDepleted = IETIMMain(mainContract).isGrowthPoolDepleted();
-            if (!buyEnabled && !poolDepleted) revert BuyNotEnabled();
         }
 
         uint256 taxBps = isBuy ? buyTaxBps : sellTaxBps;
@@ -311,14 +307,14 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     }
 
     /// @notice Enable/disable buy for non-exempt addresses
-    function setBuyEnabled(bool enabled) external onlyOwner {
-        buyEnabled = enabled;
-    }
+    // function setBuyEnabled(bool enabled) external onlyOwner {
+    //     buyEnabled = enabled;
+    // }
 
     /// @notice Enable/disable sell for non-exempt addresses
-    function setSellEnabled(bool enabled) external onlyOwner {
-        sellEnabled = enabled;
-    }
+    // function setSellEnabled(bool enabled) external onlyOwner {
+    //     sellEnabled = enabled;
+    // }
 
     /// @notice Set the ETIM token contract address (only once, by owner)
     function setTokenContract(address _etimContract) external onlyOwner {

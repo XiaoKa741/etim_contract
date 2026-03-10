@@ -98,7 +98,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 syncedNodeCount;        // Node count at last sync
         uint256 nodeRewardDebt;         // Accumulated reward debt for node accounting
         uint256 pendingNodeRewards;     // Settled but unclaimed node rewards
-        uint256 settledEtimFromCheckpoint; // ETIM flushed at old accel rate when level changes
     }
 
     // Price storage
@@ -149,10 +148,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (msg.sender != address(etimPoolHelper)) revert OnlyPoolManager();
         _;
     }
-    modifier onlyTaxHookContract() {
-        if (msg.sender != address(etimTaxHook)) revert OnlyTaxHook();
-        _;
-    }
 
     event Participated(address indexed user, uint256 ethAmount);
     event ETIMClaimed(address indexed user, uint256 etimAmount, uint256 usdValue);
@@ -177,7 +172,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     // Initialize membership level conditions
     function _initializeLevelConditions() private {
-        levelConditions[0] = LevelCondition(0,  0,                 0,                 3);
+        levelConditions[0] = LevelCondition(0,  0,                0,                 3);
         levelConditions[1] = LevelCondition(5,  50000  * 10**18,  500000  * 10**18,  7);
         levelConditions[2] = LevelCondition(10, 100000 * 10**18,  3000000 * 10**18, 10);
         levelConditions[3] = LevelCondition(15, 150000 * 10**18,  5000000 * 10**18, 12);
@@ -194,9 +189,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Participation logic
     function _processParticipation(address addr, uint256 ethAmount) private {
         if (users[addr].participationTime != 0) revert AlreadyParticipated();
-        // Allow participation if user has any referral relationship:
-        // either they were invited by someone (referrerOf != 0)
-        // or they invited someone first (directReferralCount > 0)
+        // Allow participation if user has any referral relationship
         if (referrerOf[addr] == address(0) && users[addr].directReferralCount == 0) revert NoReferralBinding();
 
         // Check and reset daily ETH deposit limit
@@ -284,7 +277,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Calculate claimable mining rewards (view)
     function getClaimableAmount() external view returns (uint256) {
         (uint256 etimAmount, ) = _calculatePendingRewards(msg.sender);
-        return etimAmount + users[msg.sender].settledEtimFromCheckpoint;
+
+        uint256 growthPoolRemain = GROWTH_POOL_SUPPLY - growthPoolReleased;
+        etimAmount = growthPoolRemain > etimAmount ? etimAmount : growthPoolRemain;
+        
+        return etimAmount;
     }
 
     // Claim mining rewards
@@ -293,34 +290,27 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (user.participationTime == 0) revert NotParticipated();
 
         uint256 totalQuotaInUsd = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(msg.sender);
-        // Allow claim if there is unsettled checkpoint ETIM even when USD quota is exhausted
-        if (user.claimedValueInUsd >= totalQuotaInUsd && user.settledEtimFromCheckpoint == 0) revert NoRemainingValue();
+        if (user.claimedValueInUsd >= totalQuotaInUsd) revert NoRemainingValue();
 
         _checkAndUpdateLevel(msg.sender);
-
-        // Include ETIM settled at old acceleration rate before last level change
-        uint256 checkpointEtim = user.settledEtimFromCheckpoint;
-        if (checkpointEtim > 0) user.settledEtimFromCheckpoint = 0;
-
+        
         (uint256 pendingEtim, uint256 claimableUsd) = _calculatePendingRewards(msg.sender);
-        pendingEtim += checkpointEtim;
+        if (pendingEtim == 0) revert NoRewardsToClaim();
 
-        // Always advance USD accounting so users aren't stuck when growth pool is depleted
-        if (claimableUsd > 0) {
-            user.claimedValueInUsd += claimableUsd;
-            user.lastClaimTime = block.timestamp;
-        }
+        // Update user state
+        user.claimedValueInUsd += claimableUsd;
+        user.lastClaimTime = block.timestamp;
 
-        // Cap ETIM by remaining growth pool supply
+        // Check and send rewards
         uint256 growthPoolRemain = GROWTH_POOL_SUPPLY - growthPoolReleased;
-        uint256 transferEtim = pendingEtim > growthPoolRemain ? growthPoolRemain : pendingEtim;
-        if (transferEtim == 0) revert NoRewardsToClaim();
+        pendingEtim = pendingEtim > growthPoolRemain ? growthPoolRemain : pendingEtim;
+        _releaseFromGrowthPool(msg.sender, pendingEtim);
 
-        _releaseFromGrowthPool(msg.sender, transferEtim);
-
+        // Etim token change
+        _updateTeamTokenBalance(address(this), msg.sender, pendingEtim);
         _checkAndUpdateLevel(msg.sender);
 
-        emit ETIMClaimed(msg.sender, transferEtim, claimableUsd);
+        emit ETIMClaimed(msg.sender, pendingEtim, claimableUsd);
     }
 
     // Convert USD value to ETIM using the price recorded on a given day
@@ -337,8 +327,9 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         UserInfo storage user = users[userAddr];
 
         if (user.participationTime == 0) return (0, 0);
+        if (isGrowthPoolDepleted()) return (0, 0);
 
-        uint256 totalQuotaInUsd    = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(userAddr);
+        uint256 totalQuotaInUsd     = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(userAddr);
         uint256 remainingValueInUsd = totalQuotaInUsd - user.claimedValueInUsd;
         if (remainingValueInUsd == 0) return (0, 0);
 
@@ -384,11 +375,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
                 lastEthUsdPriceTime = block.timestamp;
             }
         }
-    }
-
-    // HOOK sell callback (called by Tax Hook contract)
-    function distributeNodePerformanceOnEtimSell(uint256 etimAmount) external onlyTaxHookContract {
-        _distributeNodeRewards(etimAmount);
     }
 
     // ETIM token transfer callback (called by ETIM token contract)
@@ -450,10 +436,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
                 users[referrer].directReferralCount++;
                 users[referrer].teamTokenBalance += inviteePreBalance;
-                // Propagate invitee's pre-transfer balance to referrer's ancestors.
-                // The transfer delta (+value for invitee) will be propagated separately
-                // by _updateTeamTokenBalance, so ancestors end up with inviteeCurrentBalance.
-                _propagateTeamBalanceChange(referrer, int256(inviteePreBalance));
 
                 emit ReferralAdded(referrer, invitee, block.timestamp);
 
@@ -489,13 +471,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
 
         if (userInfo.level != newLevel) {
-            // Flush pending rewards at old acceleration rate before changing level
-            (uint256 etimOwed, uint256 usdOwed) = _calculatePendingRewards(user);
-            if (usdOwed > 0) {
-                userInfo.settledEtimFromCheckpoint += etimOwed;
-                userInfo.claimedValueInUsd         += usdOwed;
-                userInfo.lastClaimTime              = block.timestamp;
-            }
             userInfo.level = newLevel;
             emit LevelUpgraded(user, newLevel);
         }
@@ -520,42 +495,19 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
     }
 
-    // Propagate team balance change upward up to MAX_PROPAGATION_DEPTH levels.
-    // Stops early if a cycle is detected (e.g. A→B→C→A) to prevent infinite loops.
-    uint8 private constant MAX_PROPAGATION_DEPTH = 5;
-
+    // Propagate team balance change to direct referrer
     function _propagateTeamBalanceChange(address user, int256 delta) private {
         if (delta == 0) return;
+        address referrer = referrerOf[user];
+        if (referrer == address(0)) return;
 
-        // Track visited addresses to detect referral-chain cycles
-        address[MAX_PROPAGATION_DEPTH + 1] memory visited;
-        visited[0] = user;
-        uint8 visitedCount = 1;
-
-        address current = user;
-        for (uint8 i = 0; i < MAX_PROPAGATION_DEPTH; i++) {
-            address referrer = referrerOf[current];
-            if (referrer == address(0)) break;
-
-            // Cycle detection: stop if referrer was already visited in this chain
-            bool isCycle = false;
-            for (uint8 j = 0; j < visitedCount; j++) {
-                if (visited[j] == referrer) { isCycle = true; break; }
-            }
-            if (isCycle) break;
-
-            visited[visitedCount] = referrer;
-            visitedCount++;
-
-            if (delta > 0) {
-                users[referrer].teamTokenBalance += uint256(delta);
-            } else {
-                uint256 absDelta = uint256(-delta);
-                users[referrer].teamTokenBalance = users[referrer].teamTokenBalance >= absDelta
-                    ? users[referrer].teamTokenBalance - absDelta
-                    : 0;
-            }
-            current = referrer;
+        if (delta > 0) {
+            users[referrer].teamTokenBalance += uint256(delta);
+        } else {
+            uint256 absDelta = uint256(-delta);
+            users[referrer].teamTokenBalance = users[referrer].teamTokenBalance >= absDelta
+                ? users[referrer].teamTokenBalance - absDelta
+                : 0;
         }
     }
 
