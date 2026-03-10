@@ -1,5 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("@nomicfoundation/hardhat-foundry");
+// require("@nomicfoundation/hardhat-foundry");  // requires forge to be installed
 require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -17,10 +17,12 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      forking: {
-        url: process.env.MAINNET_RPC_URL,
-        blockNumber: 24561657, // 指定区块（可选）
-      },
+      ...(process.env.FORK === "true" ? {
+        forking: {
+          url: process.env.MAINNET_RPC_URL,
+          blockNumber: 24561657,
+        }
+      } : {}),
       hardfork: "cancun",  // For PoolSwapTest
       initialBaseFeePerGas: 0, // 设置为0，这样就不会有基础费用了
     },

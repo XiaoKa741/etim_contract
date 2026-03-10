@@ -208,7 +208,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 effectiveCap = (dailyDepositCap == 0)
             ? etimPoolHelper.getEthReserves()
             : dailyDepositCap;
-        if (dailyDepositTotal + ethAmount > effectiveCap * dailyDepositRate / FEE_DENOMINATOR) revert DailyDepositLimitExceeded();
+        if (dailyDepositTotal + ethAmount >= effectiveCap * dailyDepositRate / FEE_DENOMINATOR) revert DailyDepositLimitExceeded();
 
         // Update prices
         _updateEthUsdPrice();
@@ -434,6 +434,9 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             if (forwardTime > 0 && reverseTime > 0) {
                 address referrer = (forwardTime < reverseTime) ? from : to;
                 address invitee  = (forwardTime < reverseTime) ? to   : from;
+
+                // Invitee already has a referrer — do not overwrite
+                if (referrerOf[invitee] != address(0)) return;
 
                 referralsOf[referrer][invitee] = block.timestamp;
                 referralsOfList[referrer].push(invitee);
