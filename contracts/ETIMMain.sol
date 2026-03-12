@@ -210,6 +210,9 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         // Validate deposit amount in USD terms
         uint256 requiredMinEth = (participationAmountMin * 10 ** 18) / ethPriceInUsd;
         uint256 requiredMaxEth = (participationAmountMax * 10 ** 18) / ethPriceInUsd;
+        uint256 nodeQuotaEth   = _calcNodeQuotaBonusInUsd(addr) * 10 ** 18 / ethPriceInUsd;
+
+        requiredMaxEth = requiredMaxEth > nodeQuotaEth ? requiredMaxEth : nodeQuotaEth;
         if (ethAmount < requiredMinEth || ethAmount > requiredMaxEth) revert InvalidDepositAmount();
 
         // USD-equivalent participation amount
@@ -288,9 +291,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     function claim() external nonReentrant {
         UserInfo storage user = users[msg.sender];
         if (user.participationTime == 0) revert NotParticipated();
-
-        uint256 totalQuotaInUsd = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(msg.sender);
-        if (user.claimedValueInUsd >= totalQuotaInUsd) revert NoRemainingValue();
+        if (user.claimedValueInUsd >= user.investedValueInUsd) revert NoRemainingValue();
 
         _checkAndUpdateLevel(msg.sender);
         
@@ -329,8 +330,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (user.participationTime == 0) return (0, 0);
         if (isGrowthPoolDepleted()) return (0, 0);
 
-        uint256 totalQuotaInUsd     = user.investedValueInUsd + _calcNodeQuotaBonusInUsd(userAddr);
-        uint256 remainingValueInUsd = totalQuotaInUsd - user.claimedValueInUsd;
+        uint256 remainingValueInUsd = user.investedValueInUsd - user.claimedValueInUsd;
         if (remainingValueInUsd == 0) return (0, 0);
 
         uint256 startDay = user.lastClaimTime / 1 days * 1 days;
@@ -422,7 +422,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
                 address invitee  = (forwardTime < reverseTime) ? to   : from;
 
                 // Invitee already has a referrer — do not overwrite
-                if (referrerOf[invitee] != address(0)) return;
+                if (referrerOf[invitee] != address(0)) {
+                    // Clear and wait next transfer then establish refferal
+                    delete transferRecords[referrer][invitee];
+                    return;
+                }
 
                 referralsOf[referrer][invitee] = block.timestamp;
                 referralsOfList[referrer].push(invitee);
