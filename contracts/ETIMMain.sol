@@ -287,6 +287,16 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         return etimAmount;
     }
 
+    // Get specified user claimable mining rewards (view)
+    function getClaimableAmountOf(address user) external view returns (uint256) {
+        (uint256 etimAmount, ) = _calculatePendingRewards(user);
+
+        uint256 growthPoolRemain = GROWTH_POOL_SUPPLY - growthPoolReleased;
+        etimAmount = growthPoolRemain > etimAmount ? etimAmount : growthPoolRemain;
+        
+        return etimAmount;
+    }
+
     // Claim mining rewards
     function claim() external nonReentrant {
         UserInfo storage user = users[msg.sender];
