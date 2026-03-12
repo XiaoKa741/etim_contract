@@ -149,8 +149,19 @@ async function main() {
     await tx.wait();
     console.log("【池子HELPER合约】设置main合约");
 
-    const priceEtimPerEth = 2000; // 1ETH = 2000ETIM
-    const sqrtPriceX96 = BigInt(Math.floor(Math.sqrt(priceEtimPerEth) * 2 ** 96));
+    // 用纯 BigInt 整数算法避免浮点精度丢失
+    // sqrtPriceX96 = sqrt(price) * 2^96 = sqrt(price * 2^192)
+    const sqrtBigInt = (n) => {
+        if (n === 0n) return 0n;
+        const bits = n.toString(2).length;
+        let x = 1n << BigInt(Math.ceil(bits / 2));
+        let prev;
+        do { prev = x; x = (x + n / x) / 2n; } while (x < prev);
+        return prev;
+    };
+    const Q96 = 2n ** 96n;
+    const priceEtimPerEth = 2000n; // 1ETH = 2000ETIM
+    const sqrtPriceX96 = sqrtBigInt(priceEtimPerEth * Q96 * Q96);
     tx = await etimPool.initializePool(sqrtPriceX96);
     await tx.wait();
     console.log("【池子HELPER合约】初始化池子价格ETH/ETIM");
