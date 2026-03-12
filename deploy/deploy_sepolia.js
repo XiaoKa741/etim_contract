@@ -4,6 +4,7 @@ async function main() {
     const USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
     const POOL_MANAGER_ADDRESS = "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543";
     const CREATE2_FACTORY = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
+    const CHAINLINK_ETH_USD = "0x694AA1769357215DE4FAC081bf1f309aDC325306";
 
     const [deployer, deployer1] = await ethers.getSigners();
     console.log("部署者地址:", deployer.address);
@@ -96,6 +97,7 @@ async function main() {
         etimTokenAddress,
         USDC_ADDRESS,
         hookAddress,
+        CHAINLINK_ETH_USD,
     );
     await etimPool.waitForDeployment();
     const etimPoolAddress = await etimPool.getAddress();

@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 // progress transfer — no business logic
 interface IETIMMain {
     function onTokenTransfer(address from, address to, uint256 value) external;
+    function onTokenBalanceChanged(address from, address to, uint256 value) external;
 }
 
 contract ETIMToken is ERC20, Ownable {
@@ -66,10 +67,12 @@ contract ETIMToken is ERC20, Ownable {
         // Notify
         if (_shouldNotifyMain(from, to)) {
             try IETIMMain(mainContract).onTokenTransfer(from, to, value) {} catch {}
+        } else if (_shouldNotifyBalanceChange(from, to)) {
+            try IETIMMain(mainContract).onTokenBalanceChanged(from, to, value) {} catch {}
         }
     }
 
-    // Returns true if should be notified for this transfer
+    // EOA <-> EOA, triggers full transfer callback (referral binding + team balance + level)
     function _shouldNotifyMain(address from, address to) private view returns (bool) {
         return mainContract != address(0)
             && from != address(0)
@@ -77,5 +80,14 @@ contract ETIMToken is ERC20, Ownable {
             && to   != BURN_ADDRESS
             && !_isContract(from)
             && !_isContract(to);
+    }
+
+    // Contract <-> EOA or EOA -> BURN, triggers balance change callback (team balance + level)
+    function _shouldNotifyBalanceChange(address from, address to) private view returns (bool) {
+        if (mainContract == address(0)) return false;
+        if (from == address(0) || to == address(0)) return false;
+        bool fromIsContractLike = _isContract(from);
+        bool toIsContractLike   = _isContract(to) || to == BURN_ADDRESS;
+        return fromIsContractLike != toIsContractLike;
     }
 }

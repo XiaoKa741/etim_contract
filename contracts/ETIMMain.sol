@@ -238,6 +238,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         totalDeposited   += ethAmount;
         dailyDepositTotal += ethAmount;
 
+        _checkAndUpdateLevel(addr);
+
         emit Participated(addr, ethAmount);
     }
 
@@ -272,8 +274,19 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
     }
 
-    // Manual update level
-    function updateReferralLevel() external {
+    // Manual sync level
+    function syncLevel() external {
+        _checkAndUpdateLevel(msg.sender);
+    }
+
+    // Manual sync team token balance
+    function syncTeamBalance() external {
+        address[] memory referrals = referralsOfList[msg.sender];
+        uint256 total = 0;
+        for (uint256 i = 0; i < referrals.length; i++) {
+            total += etimToken.balanceOf(referrals[i]);
+        }
+        users[msg.sender].teamTokenBalance = total;
         _checkAndUpdateLevel(msg.sender);
     }
 
@@ -399,6 +412,23 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         _updateTeamTokenBalance(from, to, value);
         _checkAndUpdateLevel(from);
         _checkAndUpdateLevel(to);
+        _checkAndUpdateLevel(referrerOf[from]);
+        _checkAndUpdateLevel(referrerOf[to]);
+    }
+
+    // ETIM token balance changed callback (swap / burn / contract transfer)
+    function onTokenBalanceChanged(
+        address from,
+        address to,
+        uint256 value
+    ) external nonReentrant {
+        if (msg.sender != address(etimToken)) return;
+
+        _updateTeamTokenBalance(from, to, value);
+        _checkAndUpdateLevel(from);
+        _checkAndUpdateLevel(to);
+        _checkAndUpdateLevel(referrerOf[from]);
+        _checkAndUpdateLevel(referrerOf[to]);
     }
 
     // Determine and record referral relationship from bilateral transfers

@@ -18,6 +18,16 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 // import "hardhat/console.sol"; // only for local debugging
 
+interface AggregatorV3Interface {
+    function latestRoundData() external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
+}
+
 contract ETIMPoolHelper is IUnlockCallback {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
@@ -33,9 +43,10 @@ contract ETIMPoolHelper is IUnlockCallback {
     //                       IMMUTABLES
     // =========================================================
 
-    IPoolManager public immutable poolManager;
-    IERC20       public immutable etim;
-    IERC20       public immutable usdc;
+    IPoolManager          public immutable poolManager;
+    IERC20                public immutable etim;
+    IERC20                public immutable usdc;
+    AggregatorV3Interface public immutable ethUsdFeed;
 
     // =========================================================
     //                        STORAGE
@@ -119,15 +130,18 @@ contract ETIMPoolHelper is IUnlockCallback {
         address _poolManager,
         address _etim,
         address _usdc,
-        address _hook
+        address _hook,
+        address _ethUsdFeed
     ) {
         if (_poolManager == address(0)) revert ZeroAddress();
         if (_etim        == address(0)) revert ZeroAddress();
         if (_usdc        == address(0)) revert ZeroAddress();
+        if (_ethUsdFeed  == address(0)) revert ZeroAddress();
 
         poolManager = IPoolManager(_poolManager);
         etim        = IERC20(_etim);
         usdc        = IERC20(_usdc);
+        ethUsdFeed  = AggregatorV3Interface(_ethUsdFeed);
         owner       = msg.sender;
 
         // ETIM / Native ETH pool (fee 3000, tickSpacing 60)
@@ -185,13 +199,28 @@ contract ETIMPoolHelper is IUnlockCallback {
         etimAmount = FullMath.mulDiv(priceX192, 1e18, 2 ** 192);
     }
 
-    /// @notice Returns the USDC price per 1 ETH
+    /// @notice Returns the USDC price per 1 ETH — Chainlink primary, Uniswap V4 fallback
     function getUsdcPerEth() external view returns (uint256 usdcAmount) {
+        usdcAmount = getUsdcPerEthChainlink();
+        if (usdcAmount == 0) usdcAmount = getUsdcPerEthUniswapV4();
+    }
+
+    /// @notice Returns the USDC price per 1 ETH via Chainlink ETH/USD feed
+    function getUsdcPerEthChainlink() public view returns (uint256 usdcAmount) {
+        (, int256 answer,, uint256 updatedAt,) = ethUsdFeed.latestRoundData();
+        if (answer <= 0) return 0;
+        if (block.timestamp - updatedAt > 2 hours) return 0; // stale price guard
+        // Chainlink ETH/USD is 8 decimals → scale down to 6 decimals (USDC)
+        usdcAmount = uint256(answer) / 10 ** 2;
+    }
+
+    /// @notice Returns the USDC price per 1 ETH via Uniswap V4 pool spot price
+    function getUsdcPerEthUniswapV4() public view returns (uint256 usdcAmount) {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(usdcEthPoolId);
         if (sqrtPriceX96 == 0) return 0;
 
         uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
-        usdcAmount = FullMath.mulDiv(priceX192, 1e18, 2 ** 192);
+        usdcAmount = FullMath.mulDiv(priceX192, 10 ** 18, 2 ** 192);
     }
 
     // =========================================================
