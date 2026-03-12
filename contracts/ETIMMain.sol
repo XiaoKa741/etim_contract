@@ -22,7 +22,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ERRORS
-    error OnlyPoolManager();
+    error OnlyEtimToken();
     error OnlyTaxHook();
     error AlreadyParticipated();
     error NoReferralBinding();
@@ -144,8 +144,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public totalDeposited;
 
     // MODIFIERS
-    modifier onlyPoolManagerContract() {
-        if (msg.sender != address(etimPoolHelper)) revert OnlyPoolManager();
+    modifier onlyEtimToken() {
+        if (msg.sender != address(etimToken)) revert OnlyEtimToken();
         _;
     }
 
@@ -330,10 +330,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         pendingEtim = pendingEtim > growthPoolRemain ? growthPoolRemain : pendingEtim;
         _releaseFromGrowthPool(msg.sender, pendingEtim);
 
-        // Etim token change
-        _updateTeamTokenBalance(address(this), msg.sender, pendingEtim);
-        _checkAndUpdateLevel(msg.sender);
-
         emit ETIMClaimed(msg.sender, pendingEtim, claimableUsd);
     }
 
@@ -405,9 +401,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         address from,
         address to,
         uint256 value
-    ) external nonReentrant {
-        if (msg.sender != address(etimToken)) return;
-
+    ) external onlyEtimToken {
         _processReferralBinding(from, to, value);
         _updateTeamTokenBalance(from, to, value);
         _checkAndUpdateLevel(from);
@@ -421,9 +415,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         address from,
         address to,
         uint256 value
-    ) external nonReentrant {
-        if (msg.sender != address(etimToken)) return;
-
+    ) external onlyEtimToken {
         _updateTeamTokenBalance(from, to, value);
         _checkAndUpdateLevel(from);
         _checkAndUpdateLevel(to);
