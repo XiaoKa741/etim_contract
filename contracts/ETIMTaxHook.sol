@@ -106,7 +106,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     /// @notice sellTax: 50% burn, 1/6 to S6, 1/6 to Foundation, 1/6 to Official
     uint256 public sellTaxToBurn;
     uint256 public sellTaxToS6;
-    uint256 public sellTaxToFundation;
+    uint256 public sellTaxToFoundation;
     uint256 public sellTaxToOfficial;
 
     // =========================================================
@@ -270,15 +270,15 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             // poolManager.mint(address(this), key.currency1.toId(), taxAmount);
             poolManager.take(key.currency1, address(this), taxAmount);
             // assign
-            uint256 toS6        = taxAmount / 6;
-            uint256 toFundation = taxAmount / 6;
-            uint256 toOfficial  = taxAmount / 6;
-            uint256 toBurn      = taxAmount - toS6 - toFundation - toOfficial; // ~50% + dust
+            uint256 toS6         = taxAmount / 6;
+            uint256 toFoundation = taxAmount / 6;
+            uint256 toOfficial   = taxAmount / 6;
+            uint256 toBurn       = taxAmount - toS6 - toFoundation - toOfficial; // ~50% + dust
 
-            sellTaxToS6        += toS6;
-            sellTaxToFundation += toFundation;
-            sellTaxToOfficial  += toOfficial;
-            sellTaxToBurn      += toBurn;
+            sellTaxToS6         += toS6;
+            sellTaxToFoundation += toFoundation;
+            sellTaxToOfficial   += toOfficial;
+            sellTaxToBurn       += toBurn;
         }
 
         // Inform PoolManager that hook take (taxAmount)
@@ -356,11 +356,11 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     }
 
     /// @notice withdraw foundation etim tax (only owner)
-    function withdrawSellTaxFundation(address to) external onlyOwner nonReentrant {
+    function withdrawSellTaxFoundation(address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
-        uint256 amount = sellTaxToFundation;
+        uint256 amount = sellTaxToFoundation;
         if (amount == 0) revert NothingToWithdraw();
-        sellTaxToFundation = 0;
+        sellTaxToFoundation = 0;
         IERC20(etimContract).safeTransfer(to, amount);
     }
 

@@ -271,9 +271,9 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 rewardEth = ethAmount - nodeEth - lpEth - burnEth;
 
         uint256 s2Eth        = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
-        uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
+        uint256 foundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
         uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
-        uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
+        uint256 officialEth  = rewardEth - s2Eth - foundationEth - potEth;
 
         // No active nodes, to LP
         if (totalActiveNodes == 0) { lpEth += nodeEth; nodeEth = 0; }
@@ -284,7 +284,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (burnEth > 0)      etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
         if (nodeEth > 0)      _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
         if (s2Eth > 0)        _distributeS2PlusRewards(s2Eth);
-        if (fundationEth > 0) foundationRewardEth += fundationEth;
+        if (foundationEth > 0) foundationRewardEth += foundationEth;
         if (potEth > 0)       potRewardEth        += potEth;
         if (officialEth > 0)  officialRewardEth   += officialEth;
     }
