@@ -280,7 +280,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         // No S2+ players, to LP
         if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth; s2Eth = 0; }
 
-        if (lpEth > 0)        etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
+        if (lpEth > 0)        etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth);
         if (burnEth > 0)      etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
         if (nodeEth > 0)      _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
         if (s2Eth > 0)        _distributeS2PlusRewards(s2Eth);
