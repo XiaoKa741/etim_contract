@@ -69,7 +69,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public constant REWARD_OFFICIAL   = 100; // 10%
 
     // Deposit reward stats
-    uint256 public s2RewardEth;
     uint256 public foundationRewardEth;
     uint256 public potRewardEth;
     uint256 public officialRewardEth;
@@ -84,6 +83,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public rewardPerNode;
     uint256 public totalActiveNodes;
 
+    // S2+ player reward tracking
+    uint256 public rewardPerS2PlusPlayer;
+    uint256 public totalActiveS2PlusPlayers;
+
     // User info
     struct UserInfo {
         uint256 participationTime;
@@ -93,11 +96,15 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 lastClaimTime;
         uint256 directReferralCount;
         uint256 teamTokenBalance;       // Team total ETIM (excluding self)
-        uint8 level;
+        uint8   level;
 
         uint256 syncedNodeCount;        // Node count at last sync
         uint256 nodeRewardDebt;         // Accumulated reward debt for node accounting
         uint256 pendingNodeRewards;     // Settled but unclaimed node rewards
+
+        bool    s2PlusActive;           // Counted in totalActiveS2PlusPlayers
+        uint256 s2PlusRewardDebt;       // Checkpoint for S2+ accumulator
+        uint256 pendingS2PlusRewards;   // Settled S2+ ETH awaiting claim
     }
 
     // Price storage
@@ -155,6 +162,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     event ReferralAdded(address indexed referrer, address indexed invitee, uint256 timestamp);
     event LevelUpgraded(address indexed user, uint8 newLevel);
     event DailyPriceUpdated(uint256 day, uint256 ethEtimPrice, uint256 ethUsdPrice);
+    event S2PlusRewardClaimed(address indexed user, uint256 amount);
 
     constructor(
         address _etimToken,
@@ -235,7 +243,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
         participants.push(addr);
         totalUsers++;
-        totalDeposited   += ethAmount;
+        totalDeposited    += ethAmount;
         dailyDepositTotal += ethAmount;
 
         _checkAndUpdateLevel(addr);
@@ -250,28 +258,21 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 burnEth   = (ethAmount * BURN_SHARE)  / FEE_DENOMINATOR;
         uint256 rewardEth = ethAmount - nodeEth - lpEth - burnEth;
 
-        if (lpEth > 0) {
-            uint256 halfEth = lpEth / 2;
-            etimPoolHelper.swapAndAddLiquidity{value: lpEth}(halfEth);
-        }
-        if (burnEth > 0) {
-            etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
-        }
-        if (nodeEth > 0) {
-            uint256 nodeEtimAmount = etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth);
-            _distributeNodeRewards(nodeEtimAmount);
-        }
-        if (rewardEth > 0) {
-            uint256 s2Eth        = rewardEth * REWARD_S2 / FEE_DENOMINATOR;
-            uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
-            uint256 potEth       = rewardEth * REWARD_POT / FEE_DENOMINATOR;
-            uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
+        uint256 s2Eth        = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
+        uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
+        uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
+        uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
 
-            if(s2Eth > 0)        s2RewardEth += s2Eth;
-            if(fundationEth > 0) foundationRewardEth += fundationEth;
-            if(potEth > 0)       potRewardEth += potEth;
-            if(officialEth > 0)  officialRewardEth += uint256(officialEth);
-        }
+        // No S2+ players
+        if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth; s2Eth = 0; }
+
+        if (lpEth > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
+        if (burnEth > 0)     etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
+        if (nodeEth > 0)     _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
+        if (s2Eth > 0)       _distributeS2PlusRewards(s2Eth);
+        if (fundationEth > 0) foundationRewardEth += fundationEth;
+        if (potEth > 0)       potRewardEth        += potEth;
+        if (officialEth > 0)  officialRewardEth   += officialEth;
     }
 
     // Manual sync level
@@ -518,6 +519,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (userInfo.level != newLevel) {
             userInfo.level = newLevel;
             emit LevelUpgraded(user, newLevel);
+            
+            _syncUserS2PlusState(user);
         }
     }
 
@@ -597,12 +600,27 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         if (newCount > 0) totalActiveNodes += newCount;
 
         userInfo.syncedNodeCount = newCount;
+        // Advance debt checkpoint
         userInfo.nodeRewardDebt  = rewardPerNode * newCount;
     }
 
     // Public sync for user to call manually
     function syncNodes() external {
         _syncUserNodes(msg.sender);
+    }
+
+    // Query claimable node rewards (view)
+    function getClaimableNodeRewards(address userAddr) external view returns (uint256) {
+        UserInfo storage userInfo = users[userAddr];
+        uint256 pending = userInfo.pendingNodeRewards;
+        uint256 count = userInfo.syncedNodeCount;
+        if (count > 0) {
+            uint256 accumulated = rewardPerNode * count;
+            if (accumulated > userInfo.nodeRewardDebt) {
+                pending += accumulated - userInfo.nodeRewardDebt;
+            }
+        }
+        return pending;
     }
 
     // Claim accumulated node rewards
@@ -616,6 +634,58 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
         userInfo.pendingNodeRewards = 0;
         etimToken.safeTransfer(user, amount);
+    }
+
+    // =========================================================
+    //                     S2+ PLAYERS
+    // =========================================================
+
+    // Distribute ETH rewards evenly across all active S2+ players
+    function _distributeS2PlusRewards(uint256 ethAmount) internal {
+        if (totalActiveS2PlusPlayers > 0) {
+            rewardPerS2PlusPlayer += ethAmount / totalActiveS2PlusPlayers;
+        }
+    }
+
+    // Sync user's S2+ status and settle pending rewards
+    function _syncUserS2PlusState(address userAddr) internal {
+        UserInfo storage userInfo = users[userAddr];
+        if (userInfo.participationTime == 0) return;
+
+        bool shouldBeActive = userInfo.level >= 2;
+        bool wasActive      = userInfo.s2PlusActive;
+
+        // Settle pending rewards at old active state
+        if (wasActive) {
+            uint256 pending = rewardPerS2PlusPlayer > userInfo.s2PlusRewardDebt
+                ? rewardPerS2PlusPlayer - userInfo.s2PlusRewardDebt
+                : 0;
+            userInfo.pendingS2PlusRewards += pending;
+        }
+
+        // Update active status if changed
+        if (wasActive && !shouldBeActive) {
+            totalActiveS2PlusPlayers -= 1;
+            userInfo.s2PlusActive = false;
+        } else if (!wasActive && shouldBeActive) {
+            totalActiveS2PlusPlayers += 1;
+            userInfo.s2PlusActive = true;
+        }
+
+        // Advance debt checkpoint
+        userInfo.s2PlusRewardDebt = rewardPerS2PlusPlayer;
+    }
+
+    // Claim accumulated S2+ rewards
+    function claimS2PlusRewards() external nonReentrant {
+        _syncUserS2PlusState(msg.sender);
+        UserInfo storage userInfo = users[msg.sender];
+        uint256 amount = userInfo.pendingS2PlusRewards;
+        if (amount == 0) revert NoRewardsToClaim();
+        userInfo.pendingS2PlusRewards = 0;
+        (bool ok,) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+        emit S2PlusRewardClaimed(msg.sender, amount);
     }
 
     // =========================================================
@@ -695,27 +765,21 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 burnEth   = (ethAmount * BURN_SHARE)   / FEE_DENOMINATOR;
         uint256 rewardEth = ethAmount - nodeEth - lpEth - burnEth;
 
-        if (lpEth > 0) {
-            etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
-        }
-        if (burnEth > 0) {
-            etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
-        }
-        if (nodeEth > 0) {
-            uint256 nodeEtim = etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth);
-            _distributeNodeRewards(nodeEtim);
-        }
-        if (rewardEth > 0) {
-            uint256 s2Eth        = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
-            uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
-            uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
-            uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
+        uint256 s2Eth        = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
+        uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
+        uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
+        uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
 
-            if (s2Eth > 0)        s2RewardEth         += s2Eth;
-            if (fundationEth > 0) foundationRewardEth += fundationEth;
-            if (potEth > 0)       potRewardEth         += potEth;
-            if (officialEth > 0)  officialRewardEth    += officialEth;
-        }
+        // No S2 players
+        if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth; s2Eth = 0; }
+
+        if (lpEth > 0)        etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
+        if (burnEth > 0)      etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
+        if (nodeEth > 0)      _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
+        if (s2Eth > 0)        _distributeS2PlusRewards(s2Eth);
+        if (fundationEth > 0) foundationRewardEth += fundationEth;
+        if (potEth > 0)       potRewardEth        += potEth;
+        if (officialEth > 0)  officialRewardEth   += officialEth;
 
         pendingAllocationInUsd -= usdValue;
         if (ethAmount <= pendingAllocationInEth) {
@@ -742,16 +806,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     function setDailyDepositRate(uint256 rate) external onlyOwner {
         dailyDepositRate = rate;
-    }
-
-    // withdraw s2 eth
-    function withdrawS2(address payable to) external onlyOwner nonReentrant {
-        if (to == address(0)) revert ZeroAddress();
-        uint256 amount = s2RewardEth;
-        if (amount == 0) revert NothingToWithdraw();
-        s2RewardEth = 0;
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert TransferFailed();
     }
 
     // withdraw foundation
