@@ -440,6 +440,15 @@ contract ETIMMain is Ownable, ReentrancyGuard {
                 return;
             }
 
+            // If both parties already have participation qualification, treat as normal transfer
+            bool fromQualified = referrerOf[from] != address(0) || users[from].directReferralCount > 0;
+            bool toQualified   = referrerOf[to]   != address(0) || users[to].directReferralCount   > 0;
+            if (fromQualified && toQualified) {
+                if (transferRecords[from][to] > 0) delete transferRecords[from][to];
+                if (transferRecords[to][from] > 0) delete transferRecords[to][from];
+                return;
+            }
+
             uint256 forwardTime = transferRecords[from][to];
             uint256 reverseTime = transferRecords[to][from];
 
@@ -453,9 +462,9 @@ contract ETIMMain is Ownable, ReentrancyGuard {
                 address referrer = (forwardTime < reverseTime) ? from : to;
                 address invitee  = (forwardTime < reverseTime) ? to   : from;
 
-                // Invitee already has a referrer — do not overwrite
-                if (referrerOf[invitee] != address(0)) {
-                    // Clear and wait next transfer then establish refferal
+                // Invitee already has a referrer or has invited others — do not overwrite
+                if (referrerOf[invitee] != address(0) || users[invitee].directReferralCount > 0) {
+                    // Clear and wait next transfer then establish referral
                     delete transferRecords[referrer][invitee];
                     return;
                 }
