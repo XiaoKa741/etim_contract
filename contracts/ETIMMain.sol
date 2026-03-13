@@ -859,11 +859,15 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 ethAmount = (usdValue * 10 ** 18) / ethPriceInUsd;
 
         // ETH is the source of truth
-        if (ethAmount > pendingAllocationInEth) ethAmount = pendingAllocationInEth;
+        if (ethAmount >= pendingAllocationInEth) {
+            ethAmount              = pendingAllocationInEth;
+            pendingAllocationInUsd = 0;
+            pendingAllocationInEth = 0;
+        } else {
+            pendingAllocationInUsd -= usdValue;
+            pendingAllocationInEth -= ethAmount;
+        }
         if (ethAmount == 0) revert InvalidDelayAmount();
-
-        pendingAllocationInUsd -= usdValue;
-        pendingAllocationInEth -= ethAmount;
 
         _allocateDepositFunds(ethAmount);
     }
