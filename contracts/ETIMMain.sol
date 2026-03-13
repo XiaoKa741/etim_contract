@@ -275,13 +275,15 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
         uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
 
-        // No S2+ players
+        // No active nodes, to LP
+        if (totalActiveNodes == 0) { lpEth += nodeEth; nodeEth = 0; }
+        // No S2+ players, to LP
         if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth; s2Eth = 0; }
 
-        if (lpEth > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
-        if (burnEth > 0)     etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
-        if (nodeEth > 0)     _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
-        if (s2Eth > 0)       _distributeS2PlusRewards(s2Eth);
+        if (lpEth > 0)        etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
+        if (burnEth > 0)      etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
+        if (nodeEth > 0)      _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
+        if (s2Eth > 0)        _distributeS2PlusRewards(s2Eth);
         if (fundationEth > 0) foundationRewardEth += fundationEth;
         if (potEth > 0)       potRewardEth        += potEth;
         if (officialEth > 0)  officialRewardEth   += officialEth;
