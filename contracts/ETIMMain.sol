@@ -53,7 +53,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Base participation params
     uint256 public participationAmountMin = 100 * 10**6; // 100 USD (6 decimals)
     uint256 public participationAmountMax = 150 * 10**6; // 150 USD (6 decimals)
-    uint256 public dailyReleaseRate = 10; // 1% = 10/1000
+    uint256 public dailyReleaseRate = 1; // 0.1% = 1/1000
 
     // Deposit fee distribution ratios (denominator = 1000)
     uint256 public constant NODE_SHARE = 10;  // 1%
@@ -84,8 +84,10 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public totalActiveNodes;
 
     // S2+ player reward tracking
-    uint256 public rewardPerS2PlusPlayer;
+    uint256 public s2PlusPoolEth;               // ETH accumulated, pending push distribution
     uint256 public totalActiveS2PlusPlayers;
+    address[] public s2PlusPlayerList;          // all current S2+ players
+    mapping(address => uint256) private _s2PlusPlayerIdx; // 1-indexed, 0 = not in list
 
     // User info
     struct UserInfo {
@@ -103,8 +105,6 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 pendingNodeRewards;     // Settled but unclaimed node rewards
 
         bool    s2PlusActive;           // Counted in totalActiveS2PlusPlayers
-        uint256 s2PlusRewardDebt;       // Checkpoint for S2+ accumulator
-        uint256 pendingS2PlusRewards;   // Settled S2+ ETH awaiting claim
     }
 
     // Price storage
@@ -640,14 +640,14 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     //                     S2+ PLAYERS
     // =========================================================
 
-    // Distribute ETH rewards evenly across all active S2+ players
+    // Accumulate ETH into pool
     function _distributeS2PlusRewards(uint256 ethAmount) internal {
         if (totalActiveS2PlusPlayers > 0) {
-            rewardPerS2PlusPlayer += ethAmount / totalActiveS2PlusPlayers;
+            s2PlusPoolEth += ethAmount;
         }
     }
 
-    // Sync user's S2+ status and settle pending rewards
+    // Sync user's S2+ status and maintain player list
     function _syncUserS2PlusState(address userAddr) internal {
         UserInfo storage userInfo = users[userAddr];
         if (userInfo.participationTime == 0) return;
@@ -655,37 +655,55 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         bool shouldBeActive = userInfo.level >= 2;
         bool wasActive      = userInfo.s2PlusActive;
 
-        // Settle pending rewards at old active state
-        if (wasActive) {
-            uint256 pending = rewardPerS2PlusPlayer > userInfo.s2PlusRewardDebt
-                ? rewardPerS2PlusPlayer - userInfo.s2PlusRewardDebt
-                : 0;
-            userInfo.pendingS2PlusRewards += pending;
-        }
+        if (wasActive == shouldBeActive) return;
 
-        // Update active status if changed
-        if (wasActive && !shouldBeActive) {
-            totalActiveS2PlusPlayers -= 1;
-            userInfo.s2PlusActive = false;
-        } else if (!wasActive && shouldBeActive) {
-            totalActiveS2PlusPlayers += 1;
+        if (shouldBeActive) {
+            s2PlusPlayerList.push(userAddr);
+            _s2PlusPlayerIdx[userAddr] = s2PlusPlayerList.length; // 1-indexed
+            totalActiveS2PlusPlayers++;
             userInfo.s2PlusActive = true;
+        } else {
+            _removeFromS2PlusList(userAddr);
+            totalActiveS2PlusPlayers--;
+            userInfo.s2PlusActive = false;
         }
-
-        // Advance debt checkpoint
-        userInfo.s2PlusRewardDebt = rewardPerS2PlusPlayer;
     }
 
-    // Claim accumulated S2+ rewards
+    // Swap-and-pop removal from player list (O(1))
+    function _removeFromS2PlusList(address userAddr) private {
+        uint256 idx = _s2PlusPlayerIdx[userAddr];
+        if (idx == 0) return;
+        uint256 lastIdx = s2PlusPlayerList.length;
+        if (idx != lastIdx) {
+            address last = s2PlusPlayerList[lastIdx - 1];
+            s2PlusPlayerList[idx - 1] = last;
+            _s2PlusPlayerIdx[last] = idx;
+        }
+        s2PlusPlayerList.pop();
+        delete _s2PlusPlayerIdx[userAddr];
+    }
+
+    // Query claimable S2+ rewards (view)
+    function getClaimableS2PlusRewards(address userAddr) external view returns (uint256) {
+        if (!users[userAddr].s2PlusActive || totalActiveS2PlusPlayers == 0) return 0;
+        return s2PlusPoolEth / totalActiveS2PlusPlayers;
+    }
+
+    // Any S2+ player triggers a full push distribution to all S2+ players
     function claimS2PlusRewards() external nonReentrant {
-        _syncUserS2PlusState(msg.sender);
-        UserInfo storage userInfo = users[msg.sender];
-        uint256 amount = userInfo.pendingS2PlusRewards;
-        if (amount == 0) revert NoRewardsToClaim();
-        userInfo.pendingS2PlusRewards = 0;
-        (bool ok,) = msg.sender.call{value: amount}("");
-        if (!ok) revert TransferFailed();
-        emit S2PlusRewardClaimed(msg.sender, amount);
+        if (!users[msg.sender].s2PlusActive) revert NotParticipated();
+        uint256 total = s2PlusPoolEth;
+        if (total == 0) revert NoRewardsToClaim();
+
+        uint256 count = s2PlusPlayerList.length;
+        uint256 share = total / count;
+        s2PlusPoolEth = 0;
+
+        for (uint256 i = 0; i < count; i++) {
+            (bool ok,) = s2PlusPlayerList[i].call{value: share}("");
+            if (!ok) revert TransferFailed();
+            emit S2PlusRewardClaimed(s2PlusPlayerList[i], share);
+        }
     }
 
     // =========================================================
