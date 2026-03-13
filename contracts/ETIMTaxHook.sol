@@ -45,6 +45,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     error SellNotEnabled();
     error ExactOutputNotSupported();
     error AlreadySet();
+    error NotMainContract();
 
     // =========================================================
     //                        EVENTS
@@ -265,10 +266,10 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
             // poolManager.mint(address(this), key.currency1.toId(), taxAmount);
             poolManager.take(key.currency1, address(this), taxAmount);
             // assign
-            uint256 toS6        = taxAmount * 17 / 100;
-            uint256 toFundation = taxAmount * 17 / 100;
-            uint256 toOfficial  = taxAmount * 16 / 100;
-            uint256 toBurn      = taxAmount - toS6 - toFundation - toOfficial;
+            uint256 toS6        = taxAmount / 6;
+            uint256 toFundation = taxAmount / 6;
+            uint256 toOfficial  = taxAmount / 6;
+            uint256 toBurn      = taxAmount - toS6 - toFundation - toOfficial; // ~50% + dust
 
             sellTaxToS6        += toS6;
             sellTaxToFundation += toFundation;
@@ -329,6 +330,16 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         if (_mainContract == address(0)) revert ZeroAddress();
         emit MainContractUpdated(mainContract, _mainContract);
         mainContract = _mainContract;
+    }
+
+    /// @notice Flush all accumulated S6 rewards to ETIMMain for distribution (only callable by mainContract)
+    function flushS6ToMain() external nonReentrant {
+        if (msg.sender != mainContract) revert NotMainContract();
+        if (mainContract == address(0) || etimContract == address(0)) return;
+        uint256 amount = sellTaxToS6;
+        if (amount == 0) return;
+        sellTaxToS6 = 0;
+        IERC20(etimContract).safeTransfer(mainContract, amount);
     }
 
     /// @notice withdraw s6 etim tax (only owner)

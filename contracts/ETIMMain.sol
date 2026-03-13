@@ -8,6 +8,11 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+interface IETIMTaxHook {
+    function flushS6ToMain() external;
+    function sellTaxToS6() external view returns (uint256);
+}
+
 interface IETIMPoolHelper {
     function getEthReserves() external view returns (uint256);
     function getEtimPerEth() external view returns (uint256);
@@ -89,6 +94,11 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     address[] public s2PlusPlayerList;          // all current S2+ players
     mapping(address => uint256) private _s2PlusPlayerIdx; // 1-indexed, 0 = not in list
 
+    // S6 player reward tracking
+    uint256 public totalActiveS6Players;
+    address[] public s6PlayerList;              // all current S6 players
+    mapping(address => uint256) private _s6PlayerIdx; // 1-indexed, 0 = not in list
+
     // User info
     struct UserInfo {
         uint256 participationTime;
@@ -105,6 +115,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 pendingNodeRewards;     // Settled but unclaimed node rewards
 
         bool    s2PlusActive;           // Counted in totalActiveS2PlusPlayers
+        bool    s6Active;               // Counted in totalActiveS6Players
     }
 
     // Price storage
@@ -163,6 +174,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     event LevelUpgraded(address indexed user, uint8 newLevel);
     event DailyPriceUpdated(uint256 day, uint256 ethEtimPrice, uint256 ethUsdPrice);
     event S2PlusRewardClaimed(address indexed user, uint256 amount);
+    event S6RewardClaimed(address indexed user, uint256 amount);
 
     constructor(
         address _etimToken,
@@ -521,6 +533,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             emit LevelUpgraded(user, newLevel);
             
             _syncUserS2PlusState(user);
+            _syncUserS6State(user);
         }
     }
 
@@ -669,7 +682,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         }
     }
 
-    // Swap-and-pop removal from player list (O(1))
+    // Removal from player list
     function _removeFromS2PlusList(address userAddr) private {
         uint256 idx = _s2PlusPlayerIdx[userAddr];
         if (idx == 0) return;
@@ -703,6 +716,71 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             (bool ok,) = s2PlusPlayerList[i].call{value: share}("");
             if (!ok) revert TransferFailed();
             emit S2PlusRewardClaimed(s2PlusPlayerList[i], share);
+        }
+    }
+
+    // =========================================================
+    //                     S6 PLAYERS
+    // =========================================================
+
+    // Sync user's S6 status and maintain player list
+    function _syncUserS6State(address userAddr) internal {
+        UserInfo storage userInfo = users[userAddr];
+        if (userInfo.participationTime == 0) return;
+
+        bool shouldBeActive = userInfo.level == 6;
+        bool wasActive      = userInfo.s6Active;
+
+        if (wasActive == shouldBeActive) return;
+
+        if (shouldBeActive) {
+            s6PlayerList.push(userAddr);
+            _s6PlayerIdx[userAddr] = s6PlayerList.length; // 1-indexed
+            totalActiveS6Players++;
+            userInfo.s6Active = true;
+        } else {
+            _removeFromS6List(userAddr);
+            totalActiveS6Players--;
+            userInfo.s6Active = false;
+        }
+    }
+
+    // Removal from S6 player list
+    function _removeFromS6List(address userAddr) private {
+        uint256 idx = _s6PlayerIdx[userAddr];
+        if (idx == 0) return;
+        uint256 lastIdx = s6PlayerList.length;
+        if (idx != lastIdx) {
+            address last = s6PlayerList[lastIdx - 1];
+            s6PlayerList[idx - 1] = last;
+            _s6PlayerIdx[last] = idx;
+        }
+        s6PlayerList.pop();
+        delete _s6PlayerIdx[userAddr];
+    }
+
+    // Query claimable S6 rewards
+    function getClaimableS6Rewards(address userAddr) external view returns (uint256) {
+        if (!users[userAddr].s6Active || totalActiveS6Players == 0) return 0;
+        return IETIMTaxHook(etimTaxHook).sellTaxToS6() / totalActiveS6Players;
+    }
+
+    // Any S6 player triggers a full push distribution to all S6 players
+    function claimS6Rewards() external nonReentrant {
+        if (!users[msg.sender].s6Active) revert NotParticipated();
+
+        // Pull pending S6 ETIM from TaxHook into this contract
+        uint256 before = etimToken.balanceOf(address(this));
+        IETIMTaxHook(etimTaxHook).flushS6ToMain();
+        uint256 total = etimToken.balanceOf(address(this)) - before;
+        if (total == 0) revert NoRewardsToClaim();
+
+        uint256 count = s6PlayerList.length;
+        uint256 share = total / count;
+
+        for (uint256 i = 0; i < count; i++) {
+            etimToken.safeTransfer(s6PlayerList[i], share);
+            emit S6RewardClaimed(s6PlayerList[i], share);
         }
     }
 
@@ -770,7 +848,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     }
 
     // Execute a portion of pending delayed allocation
-    function triggerDelayedAllocation(uint256 usdValue) external onlyOwner {
+    function triggerDelayedAllocation(uint256 usdValue) external onlyOwner nonReentrant {
         if (usdValue > pendingAllocationInUsd) revert InvalidDelayAmount();
 
         _updateEthUsdPrice();
@@ -778,33 +856,14 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
         uint256 ethAmount = (usdValue * 10 ** 18) / ethPriceInUsd;
 
-        uint256 nodeEth   = (ethAmount * NODE_SHARE)   / FEE_DENOMINATOR;
-        uint256 lpEth     = (ethAmount * LP_SHARE)     / FEE_DENOMINATOR;
-        uint256 burnEth   = (ethAmount * BURN_SHARE)   / FEE_DENOMINATOR;
-        uint256 rewardEth = ethAmount - nodeEth - lpEth - burnEth;
-
-        uint256 s2Eth        = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
-        uint256 fundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
-        uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
-        uint256 officialEth  = rewardEth - s2Eth - fundationEth - potEth;
-
-        // No S2 players
-        if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth; s2Eth = 0; }
-
-        if (lpEth > 0)        etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth / 2);
-        if (burnEth > 0)      etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
-        if (nodeEth > 0)      _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
-        if (s2Eth > 0)        _distributeS2PlusRewards(s2Eth);
-        if (fundationEth > 0) foundationRewardEth += fundationEth;
-        if (potEth > 0)       potRewardEth        += potEth;
-        if (officialEth > 0)  officialRewardEth   += officialEth;
+        // ETH is the source of truth
+        if (ethAmount > pendingAllocationInEth) ethAmount = pendingAllocationInEth;
+        if (ethAmount == 0) revert InvalidDelayAmount();
 
         pendingAllocationInUsd -= usdValue;
-        if (ethAmount <= pendingAllocationInEth) {
-            pendingAllocationInEth -= ethAmount;
-        } else {
-            pendingAllocationInEth = 0;
-        }
+        pendingAllocationInEth -= ethAmount;
+
+        _allocateDepositFunds(ethAmount);
     }
 
     // =========================================================
@@ -880,12 +939,5 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     function _isContract(address addr) private view returns (bool) {
         return addr.code.length > 0;
-    }
-
-    // =========================================================
-    //                       FOR TEST
-    // =========================================================
-    function getTestEtimToken(uint256 etimAmount) external nonReentrant {
-        etimToken.safeTransfer(msg.sender, etimAmount);
     }
 }
