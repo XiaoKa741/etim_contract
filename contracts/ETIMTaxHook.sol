@@ -222,8 +222,12 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         PoolKey calldata key,
         SwapParams calldata params,
         bytes calldata
-    ) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-
+    )
+        internal
+        override
+        whenNotPaused
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
         // console.log("[_beforeSwap] ENTER ............."); // DEBUG
         // Skip for whitelisted addresses
         if (isExempt[sender]) {
@@ -340,15 +344,6 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         if (amount == 0) return;
         sellTaxToS6 = 0;
         IERC20(etimContract).safeTransfer(mainContract, amount);
-    }
-
-    /// @notice withdraw s6 etim tax (only owner)
-    function withdrawSellTaxS6(address to) external onlyOwner nonReentrant {
-        if (to == address(0)) revert ZeroAddress();
-        uint256 amount = sellTaxToS6;
-        if (amount == 0) revert NothingToWithdraw();
-        sellTaxToS6 = 0;
-        IERC20(etimContract).safeTransfer(to, amount);
     }
 
     /// @notice withdraw official etim tax (only owner)
