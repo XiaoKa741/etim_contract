@@ -103,7 +103,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     /// @notice buyTax official record
     uint256 public buyTax;
 
-    /// @notice sellTax: 50% burn, 17% to S6, 17% to Foundation, 16% to Official
+    /// @notice sellTax: 50% burn, 1/6 to S6, 1/6 to Foundation, 1/6 to Official
     uint256 public sellTaxToBurn;
     uint256 public sellTaxToS6;
     uint256 public sellTaxToFundation;
@@ -332,7 +332,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         mainContract = _mainContract;
     }
 
-    /// @notice Flush all accumulated S6 rewards to ETIMMain for distribution (only callable by mainContract)
+    /// @notice Flush all accumulated S6 rewards to ETIMMain for distribution
     function flushS6ToMain() external nonReentrant {
         if (msg.sender != mainContract) revert NotMainContract();
         if (mainContract == address(0) || etimContract == address(0)) return;
