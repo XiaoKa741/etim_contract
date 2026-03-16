@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface IETIMTaxHook {
-    function flushS6ToMain() external;
+    function flushS6ToMain(uint256 amount) external;
     function sellTaxToS6() external view returns (uint256);
 }
 
@@ -161,9 +161,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public totalUsers;
     uint256 public totalDeposited;
 
+    // S2+ pending ETH withdrawals (push failed, pull to claim)
+    mapping(address => uint256) public s2PlusPendingEth;
+
     // MODIFIERS
-    modifier onlyEtimToken() {
-        if (msg.sender != address(etimToken)) revert OnlyEtimToken();
+    modifier onlyEtimTokenOrOwner() {
+        if (msg.sender != address(etimToken) && msg.sender != owner()) revert OnlyEtimToken();
         _;
     }
 
@@ -175,6 +178,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     event DailyPriceUpdated(uint256 day, uint256 ethEtimPrice, uint256 ethUsdPrice);
     event S2PlusRewardClaimed(address indexed user, uint256 amount);
     event S6RewardClaimed(address indexed user, uint256 amount);
+    event S2PlusEthTransferFailed(address indexed user, uint256 amount);
+    event S2PlusPendingEthWithdrawn(address indexed user, uint256 amount);
 
     constructor(
         address _etimToken,
@@ -416,7 +421,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         address from,
         address to,
         uint256 value
-    ) external onlyEtimToken {
+    ) external onlyEtimTokenOrOwner {
         _processReferralBinding(from, to, value);
         _updateTeamTokenBalance(from, to, value);
         _checkAndUpdateLevel(from);
@@ -430,7 +435,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         address from,
         address to,
         uint256 value
-    ) external onlyEtimToken {
+    ) external onlyEtimTokenOrOwner {
         _updateTeamTokenBalance(from, to, value);
         _checkAndUpdateLevel(from);
         _checkAndUpdateLevel(to);
@@ -712,12 +717,17 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
         uint256 count = s2PlusPlayerList.length;
         uint256 share = total / count;
-        s2PlusPoolEth = 0;
+        s2PlusPoolEth = total - share * count; // dust accumulates
 
         for (uint256 i = 0; i < count; i++) {
-            (bool ok,) = s2PlusPlayerList[i].call{value: share}("");
-            if (!ok) revert TransferFailed();
-            emit S2PlusRewardClaimed(s2PlusPlayerList[i], share);
+            address player = s2PlusPlayerList[i];
+            (bool ok,) = player.call{value: share}("");
+            if (ok) {
+                emit S2PlusRewardClaimed(player, share);
+            } else {
+                s2PlusPendingEth[player] += share;
+                emit S2PlusEthTransferFailed(player, share);
+            }
         }
     }
 
@@ -771,14 +781,15 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     function claimS6Rewards() external nonReentrant {
         if (!users[msg.sender].s6Active) revert NotParticipated();
 
-        // Pull pending S6 ETIM from TaxHook into this contract
-        uint256 before = etimToken.balanceOf(address(this));
-        IETIMTaxHook(etimTaxHook).flushS6ToMain();
-        uint256 total = etimToken.balanceOf(address(this)) - before;
-        if (total == 0) revert NoRewardsToClaim();
-
         uint256 count = s6PlayerList.length;
-        uint256 share = total / count;
+
+        // Calculate floor-divisible amount
+        uint256 available = IETIMTaxHook(etimTaxHook).sellTaxToS6();
+        uint256 share = available / count;
+        if (share == 0) revert NoRewardsToClaim();
+        uint256 flushAmount = share * count;
+
+        IETIMTaxHook(etimTaxHook).flushS6ToMain(flushAmount);
 
         for (uint256 i = 0; i < count; i++) {
             etimToken.safeTransfer(s6PlayerList[i], share);
@@ -919,6 +930,16 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         officialRewardEth = 0;
         (bool ok,) = to.call{value: amount}("");
         if (!ok) revert TransferFailed();
+    }
+
+    // Withdraw S2+ pending ETH (fallback for failed push transfers)
+    function withdrawS2PlusPendingEth() external nonReentrant {
+        uint256 amount = s2PlusPendingEth[msg.sender];
+        if (amount == 0) revert NothingToWithdraw();
+        s2PlusPendingEth[msg.sender] = 0;
+        (bool ok,) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+        emit S2PlusPendingEthWithdrawn(msg.sender, amount);
     }
 
     // =========================================================

@@ -336,13 +336,12 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         mainContract = _mainContract;
     }
 
-    /// @notice Flush all accumulated S6 rewards to ETIMMain for distribution
-    function flushS6ToMain() external nonReentrant {
+    /// @notice Flush a specified amount of S6 rewards to ETIMMain for distribution
+    function flushS6ToMain(uint256 amount) external nonReentrant {
         if (msg.sender != mainContract) revert NotMainContract();
         if (mainContract == address(0) || etimContract == address(0)) return;
-        uint256 amount = sellTaxToS6;
-        if (amount == 0) return;
-        sellTaxToS6 = 0;
+        if (amount == 0 || amount > sellTaxToS6) return;
+        sellTaxToS6 -= amount;
         IERC20(etimContract).safeTransfer(mainContract, amount);
     }
 

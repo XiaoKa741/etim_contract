@@ -37,6 +37,7 @@ contract ETIMToken is ERC20, Ownable {
     // =========================================================
 
     event MainContractSet(address indexed main);
+    event CallbackFailed(string callbackName, address indexed from, address indexed to, uint256 value, bytes reason);
 
     constructor(
         string memory name_,
@@ -66,9 +67,13 @@ contract ETIMToken is ERC20, Ownable {
 
         // Notify
         if (_shouldNotifyMain(from, to)) {
-            try IETIMMain(mainContract).onTokenTransfer(from, to, value) {} catch {}
+            try IETIMMain(mainContract).onTokenTransfer(from, to, value) {} catch (bytes memory reason) {
+                emit CallbackFailed("onTokenTransfer", from, to, value, reason);
+            }
         } else if (_shouldNotifyBalanceChange(from, to)) {
-            try IETIMMain(mainContract).onTokenBalanceChanged(from, to, value) {} catch {}
+            try IETIMMain(mainContract).onTokenBalanceChanged(from, to, value) {} catch (bytes memory reason) {
+                emit CallbackFailed("onTokenBalanceChanged", from, to, value, reason);
+            }
         }
     }
 
