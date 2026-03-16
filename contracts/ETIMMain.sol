@@ -38,7 +38,8 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     error NoRewardsToClaim();
     error InvalidParams();
     error InvalidPrice();
-    error InvalidDelayAmount();
+    error NothingPending();
+    error CooldownNotElapsed();
     error GrowthPoolExceeded();
     error ZeroAddress();
     error NothingToWithdraw();
@@ -58,7 +59,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Base participation params
     uint256 public participationAmountMin = 100 * 10**6; // 100 USD (6 decimals)
     uint256 public participationAmountMax = 150 * 10**6; // 150 USD (6 decimals)
-    uint256 public dailyReleaseRate = 1; // 0.1% = 1/1000
+    uint256 public dailyMiningRate = 1; // 0.1% = 1/1000
 
     // Deposit fee distribution ratios (denominator = 1000)
     uint256 public constant NODE_SHARE = 10;  // 1%
@@ -78,10 +79,12 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     uint256 public potRewardEth;
     uint256 public officialRewardEth;
 
-    // Delayed allocation
-    bool    public delayEnabled = false;
-    uint256 public pendingAllocationInUsd = 0;
-    uint256 public pendingAllocationInEth = 0;
+    // LP+Burn rate-limited allocation
+    uint256 public pendingLpEth       = 0;
+    uint256 public pendingSwapBurnEth = 0;
+    uint256 public lpBurnCooldown     = 15 minutes;
+    uint256 public lpBurnLastTrigger  = 0;
+    uint256 public lpBurnAutoRatio    = 1000; // ratio applied to LP and burn portions separately (denominator 1000)
 
     // Node reward tracking
     uint256 public constant NODE_QUOTA = 300 * 10 ** 6;
@@ -132,6 +135,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     // Daily deposit limit
     uint256 public dailyDepositCap    = 0;
     uint256 public dailyDepositRate   = 200; // 20% = 200/1000
+    uint256 public dailyDepositLimit  = 0;   // if non-zero, used directly as daily cap
     uint256 public dailyCapUpdatedDay = 0;
     uint256 public dailyDepositTotal  = 0;
     uint256 public dailyDepositDay    = 0;
@@ -223,10 +227,16 @@ contract ETIMMain is Ownable, ReentrancyGuard {
             dailyDepositDay = currentDay;
             dailyDepositTotal = 0;
         }
-        uint256 effectiveCap = (dailyDepositCap == 0)
-            ? etimPoolHelper.getEthReserves()
-            : dailyDepositCap;
-        if (dailyDepositTotal + ethAmount >= effectiveCap * dailyDepositRate / FEE_DENOMINATOR) revert DailyDepositLimitExceeded();
+        uint256 effectiveLimit;
+        if (dailyDepositLimit != 0) {
+            effectiveLimit = dailyDepositLimit;
+        } else {
+            uint256 effectiveCap = (dailyDepositCap == 0)
+                ? etimPoolHelper.getEthReserves()
+                : dailyDepositCap;
+            effectiveLimit = effectiveCap * dailyDepositRate / FEE_DENOMINATOR;
+        }
+        if (dailyDepositTotal + ethAmount >= effectiveLimit) revert DailyDepositLimitExceeded();
 
         // Update prices
         _updateEthUsdPrice();
@@ -243,13 +253,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         // USD-equivalent participation amount
         uint256 participationValueInUsd = ethAmount * ethPriceInUsd / 10 ** 18;
 
-        if (delayEnabled) {
-            // Delay mode: accumulate for later allocation
-            pendingAllocationInUsd += participationValueInUsd;
-            pendingAllocationInEth += ethAmount;
-        } else {
-            _allocateDepositFunds(ethAmount);
-        }
+        _allocateDepositFunds(ethAmount);
 
         // Record user info
         users[addr].participationTime    = block.timestamp;
@@ -268,31 +272,46 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         emit Participated(addr, ethAmount);
     }
 
-    // Allocate ETH according to fee split: 69% LP / 25% burn / 5% rewards / 1% nodes
+    // Allocate ETH: node/reward immediate; LP(69%) + burn(25%) rate-limited via pending
     function _allocateDepositFunds(uint256 ethAmount) private {
-        uint256 nodeEth   = (ethAmount * NODE_SHARE) / FEE_DENOMINATOR;
-        uint256 lpEth     = (ethAmount * LP_SHARE)   / FEE_DENOMINATOR;
-        uint256 burnEth   = (ethAmount * BURN_SHARE)  / FEE_DENOMINATOR;
-        uint256 rewardEth = ethAmount - nodeEth - lpEth - burnEth;
+        uint256 nodeEth     = (ethAmount * NODE_SHARE) / FEE_DENOMINATOR;
+        uint256 lpEth       = (ethAmount * LP_SHARE)   / FEE_DENOMINATOR;
+        uint256 swapBurnEth = (ethAmount * BURN_SHARE)  / FEE_DENOMINATOR;
+        uint256 rewardEth   = ethAmount - nodeEth - lpEth - swapBurnEth;
 
-        uint256 s2Eth        = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
+        uint256 s2Eth         = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
         uint256 foundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
-        uint256 potEth       = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
-        uint256 officialEth  = rewardEth - s2Eth - foundationEth - potEth;
+        uint256 potEth        = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
+        uint256 officialEth   = rewardEth - s2Eth - foundationEth - potEth;
 
-        // No active nodes, to LP
-        if (totalActiveNodes == 0) { lpEth += nodeEth; nodeEth = 0; }
-        // No S2+ players, to LP
-        if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth; s2Eth = 0; }
+        // Overflow: no active nodes/S2+ → surplus into LP pending (rate-limited together)
+        if (totalActiveNodes == 0)         { lpEth += nodeEth; nodeEth = 0; }
+        if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth;   s2Eth   = 0; }
 
-        if (lpEth > 0)        etimPoolHelper.swapAndAddLiquidity{value: lpEth}(lpEth);
-        if (burnEth > 0)      etimPoolHelper.swapAndBurn{value: burnEth}(burnEth);
-        if (nodeEth > 0)      _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
-        if (s2Eth > 0)        _distributeS2PlusRewards(s2Eth);
+        // Immediate distributions
+        if (nodeEth > 0)       _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
+        if (s2Eth > 0)         _distributeS2PlusRewards(s2Eth);
         if (foundationEth > 0) foundationRewardEth += foundationEth;
-        if (potEth > 0)       potRewardEth        += potEth;
-        if (officialEth > 0)  officialRewardEth   += officialEth;
+        if (potEth > 0)        potRewardEth        += potEth;
+        if (officialEth > 0)   officialRewardEth   += officialEth;
+
+        // LP + burn: inject auto automated of this deposit if CD passed, remainder to pending
+        if (block.timestamp >= lpBurnLastTrigger + lpBurnCooldown) {
+            uint256 lpInject       = lpEth       * lpBurnAutoRatio / FEE_DENOMINATOR;
+            uint256 swapBurnInject = swapBurnEth * lpBurnAutoRatio / FEE_DENOMINATOR;
+
+            pendingLpEth       += lpEth       - lpInject;
+            pendingSwapBurnEth += swapBurnEth - swapBurnInject;
+
+            lpBurnLastTrigger = block.timestamp;
+            if (lpInject > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpInject}(lpInject);
+            if (swapBurnInject > 0) etimPoolHelper.swapAndBurn{value: swapBurnInject}(swapBurnInject);
+        } else {
+            pendingLpEth       += lpEth;
+            pendingSwapBurnEth += swapBurnEth;
+        }
     }
+
 
     // Manual sync level
     function syncLevel() external {
@@ -380,7 +399,7 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         uint256 initialRemaining = remainingValueInUsd;
 
         for (uint256 t = startDay; t < endDay; t += 1 days) {
-            uint256 dailyUsd = (user.investedValueInUsd * dailyReleaseRate) / 1000;
+            uint256 dailyUsd = (user.investedValueInUsd * dailyMiningRate) / 1000;
             dailyUsd += (dailyUsd * accelerationRate) / 100;
             if (dailyUsd > remainingValueInUsd) dailyUsd = remainingValueInUsd;
 
@@ -852,35 +871,34 @@ contract ETIMMain is Ownable, ReentrancyGuard {
     }
 
     // =========================================================
-    //                   DELAYED ALLOCATION
+    //                   LP+BURN RATE-LIMITED ALLOCATION
     // =========================================================
 
-    // Toggle delayed allocation mode
-    function setDelayEnabled(bool enabled) external onlyOwner {
-        delayEnabled = enabled;
+    // Owner manually injects a ratio of pending LP and burn separately
+    function triggerLpBurnAllocation(uint256 ratio) external onlyOwner nonReentrant {
+        if (ratio == 0 || ratio > FEE_DENOMINATOR) revert InvalidParams();
+        if (pendingLpEth == 0 && pendingSwapBurnEth == 0) revert NothingPending();
+        if (block.timestamp < lpBurnLastTrigger + lpBurnCooldown) revert CooldownNotElapsed();
+
+        uint256 lpAmount       = pendingLpEth       * ratio / FEE_DENOMINATOR;
+        uint256 swapBurnAmount = pendingSwapBurnEth * ratio / FEE_DENOMINATOR;
+        if (lpAmount == 0 && swapBurnAmount == 0) revert InvalidParams();
+
+        pendingLpEth       -= lpAmount;
+        pendingSwapBurnEth -= swapBurnAmount;
+        lpBurnLastTrigger = block.timestamp;
+
+        if (lpAmount > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpAmount}(lpAmount);
+        if (swapBurnAmount > 0) etimPoolHelper.swapAndBurn{value: swapBurnAmount}(swapBurnAmount);
     }
 
-    // Execute a portion of pending delayed allocation
-    function triggerDelayedAllocation(uint256 usdValue) external onlyOwner nonReentrant {
-        if (usdValue > pendingAllocationInUsd) revert InvalidDelayAmount();
+    function setLpBurnCooldown(uint256 cooldown) external onlyOwner {
+        lpBurnCooldown = cooldown;
+    }
 
-        _updateEthUsdPrice();
-        _updateEthEtimPrice();
-
-        uint256 ethAmount = (usdValue * 10 ** 18) / ethPriceInUsd;
-
-        // ETH is the source of truth
-        if (ethAmount >= pendingAllocationInEth) {
-            ethAmount              = pendingAllocationInEth;
-            pendingAllocationInUsd = 0;
-            pendingAllocationInEth = 0;
-        } else {
-            pendingAllocationInUsd -= usdValue;
-            pendingAllocationInEth -= ethAmount;
-        }
-        if (ethAmount == 0) revert InvalidDelayAmount();
-
-        _allocateDepositFunds(ethAmount);
+    function setLpBurnAutoRatio(uint256 ratio) external onlyOwner {
+        if (ratio > FEE_DENOMINATOR) revert InvalidParams();
+        lpBurnAutoRatio = ratio;
     }
 
     // =========================================================
@@ -894,12 +912,16 @@ contract ETIMMain is Ownable, ReentrancyGuard {
         participationAmountMax = max;
     }
 
-    function setDailyReleaseRate(uint256 rate) external onlyOwner {
-        dailyReleaseRate = rate;
+    function setDailyMiningRate(uint256 rate) external onlyOwner {
+        dailyMiningRate = rate;
     }
 
     function setDailyDepositRate(uint256 rate) external onlyOwner {
         dailyDepositRate = rate;
+    }
+
+    function setDailyDepositLimit(uint256 limit) external onlyOwner {
+        dailyDepositLimit = limit;
     }
 
     // withdraw foundation
