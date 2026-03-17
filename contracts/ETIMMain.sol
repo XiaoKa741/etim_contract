@@ -89,6 +89,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     // Node reward tracking
     uint256 public constant NODE_QUOTA = 300 * 10 ** 6;
     uint256 public rewardPerNode;
+    uint256 public nodeDistributionDust;        // carry-over remainder from integer division
     uint256 public totalActiveNodes;
 
     // S2+ player reward tracking
@@ -610,7 +611,9 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     // Distribute ETIM rewards evenly across all active nodes
     function _distributeNodeRewards(uint256 etimAmount) internal {
         if (totalActiveNodes > 0) {
-            rewardPerNode += etimAmount / totalActiveNodes;
+            uint256 total = etimAmount + nodeDistributionDust;
+            rewardPerNode        += total / totalActiveNodes;
+            nodeDistributionDust  = total % totalActiveNodes;
         }
     }
 
