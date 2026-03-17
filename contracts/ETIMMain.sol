@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -23,7 +23,7 @@ interface IETIMPoolHelper {
     function swapAndBurn(uint256 ethAmount) external payable;
 }
 
-contract ETIMMain is Ownable, ReentrancyGuard {
+contract ETIMMain is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ERRORS
@@ -922,6 +922,17 @@ contract ETIMMain is Ownable, ReentrancyGuard {
 
     function setDailyDepositLimit(uint256 limit) external onlyOwner {
         dailyDepositLimit = limit;
+    }
+
+    function setLevelCondition(
+        uint8   level,
+        uint256 minDirectReferrals,
+        uint256 minPersonalTokens,
+        uint256 minTeamTokens,
+        uint256 accelerationRate
+    ) external onlyOwner {
+        if (level > 6) revert InvalidParams();
+        levelConditions[level] = LevelCondition(minDirectReferrals, minPersonalTokens, minTeamTokens, accelerationRate);
     }
 
     // withdraw foundation
