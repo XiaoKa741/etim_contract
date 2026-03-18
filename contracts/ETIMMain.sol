@@ -69,7 +69,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     uint256 public constant FEE_DENOMINATOR = 1000;
 
     // Deposit reward distribution ratios
-    uint256 public constant REWARD_S2         = 500; // 50%
+    uint256 public constant REWARD_S2         = 300; // 30%
+    uint256 public constant REWARD_S3         = 200; // 20%
     uint256 public constant REWARD_FOUNDATION = 300; // 30%
     uint256 public constant REWARD_POT        = 100; // 10%
     uint256 public constant REWARD_OFFICIAL   = 100; // 10%
@@ -98,6 +99,12 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     address[] public s2PlusPlayerList;          // all current S2+ players
     mapping(address => uint256) private _s2PlusPlayerIdx; // 1-indexed, 0 = not in list
 
+    // S3+ player reward tracking
+    uint256 public s3PlusPoolEth;               // ETH accumulated, pending push distribution
+    uint256 public totalActiveS3PlusPlayers;
+    address[] public s3PlusPlayerList;          // all current S3+ players
+    mapping(address => uint256) private _s3PlusPlayerIdx; // 1-indexed, 0 = not in list
+
     // S6 player reward tracking
     uint256 public totalActiveS6Players;
     address[] public s6PlayerList;              // all current S6 players
@@ -119,6 +126,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         uint256 pendingNodeRewards;     // Settled but unclaimed node rewards
 
         bool    s2PlusActive;           // Counted in totalActiveS2PlusPlayers
+        bool    s3PlusActive;           // Counted in totalActiveS3PlusPlayers
         bool    s6Active;               // Counted in totalActiveS6Players
     }
 
@@ -168,6 +176,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // S2+ pending ETH withdrawals (push failed, pull to claim)
     mapping(address => uint256) public s2PlusPendingEth;
+    // S3+ pending ETH withdrawals (push failed, pull to claim)
+    mapping(address => uint256) public s3PlusPendingEth;
 
     // MODIFIERS
     modifier onlyEtimTokenOrOwner() {
@@ -182,9 +192,12 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     event LevelUpgraded(address indexed user, uint8 newLevel);
     event DailyPriceUpdated(uint256 day, uint256 ethEtimPrice, uint256 ethUsdPrice);
     event S2PlusRewardClaimed(address indexed user, uint256 amount);
+    event S3PlusRewardClaimed(address indexed user, uint256 amount);
     event S6RewardClaimed(address indexed user, uint256 amount);
     event S2PlusEthTransferFailed(address indexed user, uint256 amount);
+    event S3PlusEthTransferFailed(address indexed user, uint256 amount);
     event S2PlusPendingEthWithdrawn(address indexed user, uint256 amount);
+    event S3PlusPendingEthWithdrawn(address indexed user, uint256 amount);
 
     constructor(
         address _etimToken,
@@ -281,36 +294,33 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         uint256 rewardEth   = ethAmount - nodeEth - lpEth - swapBurnEth;
 
         uint256 s2Eth         = rewardEth * REWARD_S2         / FEE_DENOMINATOR;
+        uint256 s3Eth         = rewardEth * REWARD_S3         / FEE_DENOMINATOR;
         uint256 foundationEth = rewardEth * REWARD_FOUNDATION / FEE_DENOMINATOR;
         uint256 potEth        = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
-        uint256 officialEth   = rewardEth - s2Eth - foundationEth - potEth;
+        uint256 officialEth   = rewardEth - s2Eth - s3Eth - foundationEth - potEth;
 
-        // Overflow: no active nodes/S2+ → surplus into LP pending (rate-limited together)
+        // Overflow: no active nodes/S2+/S3+ → surplus into LP pending (rate-limited together)
         if (totalActiveNodes == 0)         { lpEth += nodeEth; nodeEth = 0; }
         if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth;   s2Eth   = 0; }
+        if (totalActiveS3PlusPlayers == 0) { lpEth += s3Eth;   s3Eth   = 0; }
 
         // Immediate distributions
         if (nodeEth > 0)       _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
         if (s2Eth > 0)         _distributeS2PlusRewards(s2Eth);
+        if (s3Eth > 0)         _distributeS3PlusRewards(s3Eth);
         if (foundationEth > 0) foundationRewardEth += foundationEth;
         if (potEth > 0)        potRewardEth        += potEth;
         if (officialEth > 0)   officialRewardEth   += officialEth;
 
-        // LP + burn: inject auto automated of this deposit if CD passed, remainder to pending
-        if (block.timestamp >= lpBurnLastTrigger + lpBurnCooldown) {
-            uint256 lpInject       = lpEth       * lpBurnAutoRatio / FEE_DENOMINATOR;
-            uint256 swapBurnInject = swapBurnEth * lpBurnAutoRatio / FEE_DENOMINATOR;
+        // LP + burn: player deposits always inject the ratio portion immediately (no cooldown)
+        uint256 lpInject       = lpEth       * lpBurnAutoRatio / FEE_DENOMINATOR;
+        uint256 swapBurnInject = swapBurnEth * lpBurnAutoRatio / FEE_DENOMINATOR;
 
-            pendingLpEth       += lpEth       - lpInject;
-            pendingSwapBurnEth += swapBurnEth - swapBurnInject;
-
-            lpBurnLastTrigger = block.timestamp;
-            if (lpInject > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpInject}(lpInject);
-            if (swapBurnInject > 0) etimPoolHelper.swapAndBurn{value: swapBurnInject}(swapBurnInject);
-        } else {
-            pendingLpEth       += lpEth;
-            pendingSwapBurnEth += swapBurnEth;
-        }
+        pendingLpEth       += lpEth       - lpInject;
+        pendingSwapBurnEth += swapBurnEth - swapBurnInject;
+        
+        if (lpInject > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpInject}(lpInject);
+        if (swapBurnInject > 0) etimPoolHelper.swapAndBurn{value: swapBurnInject}(swapBurnInject);
     }
 
 
@@ -558,8 +568,9 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         if (userInfo.level != newLevel) {
             userInfo.level = newLevel;
             emit LevelUpgraded(user, newLevel);
-            
+
             _syncUserS2PlusState(user);
+            _syncUserS3PlusState(user);
             _syncUserS6State(user);
         }
     }
@@ -754,6 +765,81 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     }
 
     // =========================================================
+    //                     S3+ PLAYERS
+    // =========================================================
+
+    // Accumulate ETH into pool
+    function _distributeS3PlusRewards(uint256 ethAmount) internal {
+        if (totalActiveS3PlusPlayers > 0) {
+            s3PlusPoolEth += ethAmount;
+        }
+    }
+
+    // Sync user's S3+ status and maintain player list
+    function _syncUserS3PlusState(address userAddr) internal {
+        UserInfo storage userInfo = users[userAddr];
+        if (userInfo.participationTime == 0) return;
+
+        bool shouldBeActive = userInfo.level >= 3;
+        bool wasActive      = userInfo.s3PlusActive;
+
+        if (wasActive == shouldBeActive) return;
+
+        if (shouldBeActive) {
+            s3PlusPlayerList.push(userAddr);
+            _s3PlusPlayerIdx[userAddr] = s3PlusPlayerList.length; // 1-indexed
+            totalActiveS3PlusPlayers++;
+            userInfo.s3PlusActive = true;
+        } else {
+            _removeFromS3PlusList(userAddr);
+            totalActiveS3PlusPlayers--;
+            userInfo.s3PlusActive = false;
+        }
+    }
+
+    // Removal from player list
+    function _removeFromS3PlusList(address userAddr) private {
+        uint256 idx = _s3PlusPlayerIdx[userAddr];
+        if (idx == 0) return;
+        uint256 lastIdx = s3PlusPlayerList.length;
+        if (idx != lastIdx) {
+            address last = s3PlusPlayerList[lastIdx - 1];
+            s3PlusPlayerList[idx - 1] = last;
+            _s3PlusPlayerIdx[last] = idx;
+        }
+        s3PlusPlayerList.pop();
+        delete _s3PlusPlayerIdx[userAddr];
+    }
+
+    // Query claimable S3+ rewards (view)
+    function getClaimableS3PlusRewards(address userAddr) external view returns (uint256) {
+        if (!users[userAddr].s3PlusActive || totalActiveS3PlusPlayers == 0) return 0;
+        return s3PlusPoolEth / totalActiveS3PlusPlayers;
+    }
+
+    // Any S3+ player triggers a full push distribution to all S3+ players
+    function claimS3PlusRewards() external nonReentrant {
+        if (!users[msg.sender].s3PlusActive) revert NotParticipated();
+        uint256 total = s3PlusPoolEth;
+        if (total == 0) revert NoRewardsToClaim();
+
+        uint256 count = s3PlusPlayerList.length;
+        uint256 share = total / count;
+        s3PlusPoolEth = total - share * count; // dust accumulates
+
+        for (uint256 i = 0; i < count; i++) {
+            address player = s3PlusPlayerList[i];
+            (bool ok,) = player.call{value: share}("");
+            if (ok) {
+                emit S3PlusRewardClaimed(player, share);
+            } else {
+                s3PlusPendingEth[player] += share;
+                emit S3PlusEthTransferFailed(player, share);
+            }
+        }
+    }
+
+    // =========================================================
     //                     S6 PLAYERS
     // =========================================================
 
@@ -895,6 +981,23 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         if (swapBurnAmount > 0) etimPoolHelper.swapAndBurn{value: swapBurnAmount}(swapBurnAmount);
     }
 
+    // Owner injects exact amounts of LP and burn from pending (at least one non-zero, clamped to available)
+    function triggerLpBurnAllocationExact(uint256 lpAmount, uint256 swapBurnAmount) external onlyOwner nonReentrant {
+        if (lpAmount == 0 && swapBurnAmount == 0) revert InvalidParams();
+        if (block.timestamp < lpBurnLastTrigger + lpBurnCooldown) revert CooldownNotElapsed();
+
+        // Clamp to available pending amounts
+        if (lpAmount > pendingLpEth)       lpAmount = pendingLpEth;
+        if (swapBurnAmount > pendingSwapBurnEth) swapBurnAmount = pendingSwapBurnEth;
+
+        pendingLpEth       -= lpAmount;
+        pendingSwapBurnEth -= swapBurnAmount;
+        lpBurnLastTrigger = block.timestamp;
+
+        if (lpAmount > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpAmount}(lpAmount);
+        if (swapBurnAmount > 0) etimPoolHelper.swapAndBurn{value: swapBurnAmount}(swapBurnAmount);
+    }
+
     function setLpBurnCooldown(uint256 cooldown) external onlyOwner {
         lpBurnCooldown = cooldown;
     }
@@ -976,6 +1079,16 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         (bool ok,) = msg.sender.call{value: amount}("");
         if (!ok) revert TransferFailed();
         emit S2PlusPendingEthWithdrawn(msg.sender, amount);
+    }
+
+    // Withdraw S3+ pending ETH (fallback for failed push transfers)
+    function withdrawS3PlusPendingEth() external nonReentrant {
+        uint256 amount = s3PlusPendingEth[msg.sender];
+        if (amount == 0) revert NothingToWithdraw();
+        s3PlusPendingEth[msg.sender] = 0;
+        (bool ok,) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+        emit S3PlusPendingEthWithdrawn(msg.sender, amount);
     }
 
     // =========================================================
