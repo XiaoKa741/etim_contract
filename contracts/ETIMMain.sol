@@ -752,6 +752,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         uint256 share = total / count;
         s2PlusPoolEth = total - share * count; // dust accumulates
 
+        if (share == 0) revert NoRewardsToClaim();
+
         for (uint256 i = 0; i < count; i++) {
             address player = s2PlusPlayerList[i];
             (bool ok,) = player.call{value: share}("");
@@ -826,6 +828,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         uint256 count = s3PlusPlayerList.length;
         uint256 share = total / count;
         s3PlusPoolEth = total - share * count; // dust accumulates
+
+        if (share == 0) revert NoRewardsToClaim();
 
         for (uint256 i = 0; i < count; i++) {
             address player = s3PlusPlayerList[i];
