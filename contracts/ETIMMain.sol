@@ -215,13 +215,13 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // Initialize membership level conditions
     function _initializeLevelConditions() private {
-        levelConditions[0] = LevelCondition(0,  0,                0,                 3);
-        levelConditions[1] = LevelCondition(5,  50000  * 10**18,  500000  * 10**18,  7);
-        levelConditions[2] = LevelCondition(10, 100000 * 10**18,  3000000 * 10**18, 10);
-        levelConditions[3] = LevelCondition(15, 150000 * 10**18,  5000000 * 10**18, 12);
-        levelConditions[4] = LevelCondition(20, 200000 * 10**18,  7000000 * 10**18, 15);
-        levelConditions[5] = LevelCondition(25, 300000 * 10**18,  9000000 * 10**18, 18);
-        levelConditions[6] = LevelCondition(30, 400000 * 10**18, 11000000 * 10**18, 20);
+        levelConditions[0] = LevelCondition(0,  0,               0,                 3);
+        levelConditions[1] = LevelCondition(5,  30000  * 10**18, 300000  * 10**18,  7);
+        levelConditions[2] = LevelCondition(10, 50000  * 10**18, 1000000 * 10**18, 10);
+        levelConditions[3] = LevelCondition(15, 100000 * 10**18, 2000000 * 10**18, 12);
+        levelConditions[4] = LevelCondition(20, 150000 * 10**18, 3000000 * 10**18, 15);
+        levelConditions[5] = LevelCondition(25, 200000 * 10**18, 4000000 * 10**18, 18);
+        levelConditions[6] = LevelCondition(30, 300000 * 10**18, 5000000 * 10**18, 21);
     }
 
     // User deposits ETH to participate

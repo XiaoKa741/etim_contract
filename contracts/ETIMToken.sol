@@ -16,16 +16,16 @@ contract ETIMToken is ERC20, Ownable2Step {
     //                      CONSTANTS
     // =========================================================
 
-    uint256 public constant TOTAL_SUPPLY = 2_100_000_000 * 10 ** 18;
+    uint256 public constant TOTAL_SUPPLY = 100_000_000 * 10 ** 18;
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-    // Module allocation amounts (for reference / off-chain verification)
-    // uint256 public constant GROWTH_POOL_SUPPLY  = 1_925_700_000 * 10 ** 18; // 91.7%
-    // uint256 public constant MARKET_INFRA_SUPPLY =   105_000_000 * 10 ** 18; // 5%
-    // uint256 public constant ECOSYSTEM_SUPPLY    =    21_000_000 * 10 ** 18; // 1%
-    // uint256 public constant COMMUNITY_SUPPLY    =    21_000_000 * 10 ** 18; // 1%
-    // uint256 public constant AIRDROP_SUPPLY      =    21_000_000 * 10 ** 18; // 1%
-    // uint256 public constant ETH_FOUNDATION_SUPPLY =   6_300_000 * 10 ** 18; // 0.3%
+    // Module allocation amounts — total 100,000,000 ETIM (for reference / off-chain verification)
+    // uint256 public constant GROWTH_POOL_SUPPLY      = 87_700_000 * 10 ** 18; // 87.7%
+    // uint256 public constant MARKET_INFRA_SUPPLY     =  5_000_000 * 10 ** 18; // 5%
+    // uint256 public constant ECOSYSTEM_SUPPLY        =  1_000_000 * 10 ** 18; // 1%
+    // uint256 public constant COMMUNITY_SUPPLY        =  1_000_000 * 10 ** 18; // 1%
+    // uint256 public constant AIRDROP_SUPPLY          =  5_000_000 * 10 ** 18; // 5%
+    // uint256 public constant ETH_FOUNDATION_SUPPLY   =    300_000 * 10 ** 18; // 0.3%
 
     // =========================================================
     //                       STATE
