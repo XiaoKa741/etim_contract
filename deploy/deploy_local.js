@@ -29,7 +29,7 @@ async function main() {
     let foundSalt = null;
     let hookAddress = null;
 
-    for (let salt = 0n; salt < 1000000n; salt++) {
+    for (let salt = 51586n; salt < 1000000n; salt++) {
         // console.log("\t", salt.toString());
         const saltHex = ethers.zeroPadValue(ethers.toBeHex(salt), 32);
         const predicted = ethers.getCreate2Address(CREATE2_FACTORY, saltHex, initCodeHash);
@@ -117,27 +117,27 @@ async function main() {
     const etimMainAddress = await etimMain.getAddress();
     console.log("主合约地址:", etimMainAddress);
 
-    // ========== 分配代币 ==========
+    // ========== 分配代币（总量 100,000,000 ETIM）==========
     console.log("\n🆗. 分配代币...");
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("192570000"));
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress,       ethers.parseEther("87700000")); // 87.7% Growth Pool
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(marketInfra.address, ethers.parseEther("105000000"));
+    tx = await etimToken.connect(deployer).transfer(marketInfra.address,   ethers.parseEther("5000000"));  // 5%    Market Infra
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(ecoFund.address, ethers.parseEther("21000000"));
+    tx = await etimToken.connect(deployer).transfer(ecoFund.address,       ethers.parseEther("1000000"));  // 1%    生态建设基金
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(communityFund.address, ethers.parseEther("21000000"));
+    tx = await etimToken.connect(deployer).transfer(communityFund.address, ethers.parseEther("1000000"));  // 1%    社区建设
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(airdrop.address, ethers.parseEther("21000000"));
+    tx = await etimToken.connect(deployer).transfer(airdrop.address,       ethers.parseEther("5000000"));  // 5%    空投
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(ethFoundation.address, ethers.parseEther("6300000"));
+    tx = await etimToken.connect(deployer).transfer(ethFoundation.address, ethers.parseEther("300000"));   // 0.3%  以太坊基金会
     await tx.wait();
 
-    console.log("代币总量 grouthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
-    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(marketInfra.address)), "ETIM");
-    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(ecoFund.address)), "ETIM");
-    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(communityFund.address)), "ETIM");
-    console.log("代币总量 airdrop:", ethers.formatEther(await etimToken.balanceOf(airdrop.address)), "ETIM");
-    console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(ethFoundation.address)), "ETIM");
+    console.log("代币分配 growthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
+    console.log("代币分配 marketInfra     :", ethers.formatEther(await etimToken.balanceOf(marketInfra.address)), "ETIM");
+    console.log("代币分配 ecoFund         :", ethers.formatEther(await etimToken.balanceOf(ecoFund.address)), "ETIM");
+    console.log("代币分配 communityFund   :", ethers.formatEther(await etimToken.balanceOf(communityFund.address)), "ETIM");
+    console.log("代币分配 airdrop         :", ethers.formatEther(await etimToken.balanceOf(airdrop.address)), "ETIM");
+    console.log("代币分配 ethFoundation   :", ethers.formatEther(await etimToken.balanceOf(ethFoundation.address)), "ETIM");
 
     // ========== 设置合约间依赖关系 ==========
     console.log("\n🆗. 设置合约间依赖关系...");

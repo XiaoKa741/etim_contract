@@ -117,27 +117,19 @@ async function main() {
     const etimMainAddress = await etimMain.getAddress();
     console.log("主合约地址:", etimMainAddress);
 
-    // ========== 分配代币 ==========
+    // ========== 分配代币（总量 100,000,000 ETIM）==========
+    // Sepolia 只有 deployer / deployer1 两个账户，非 Growth Pool 部分暂存 deployer
     console.log("\n🆗. 分配代币...");
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("192570000"));
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("87700000")); // 87.7% Growth Pool
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("105000000"));
-    await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("21000000"));
-    await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("21000000"));
-    await tx.wait();
-    // tx = await etimToken.connect(deployer).transfer(deployer.address, ethers.parseEther("21000000"));
-    // await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(deployer1.address, ethers.parseEther("6300000"));
+    // Market Infra / Ecosystem / Community / Airdrop → deployer 暂存
+    tx = await etimToken.connect(deployer).transfer(deployer1.address, ethers.parseEther("300000"));   // 0.3%  以太坊基金会
+
     await tx.wait();
 
-    console.log("代币总量 grouthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
-    console.log("代币总量 marketInfra:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
-    console.log("代币总量 ecoFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
-    console.log("代币总量 communityFund:", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
-    console.log("代币总量 airdrop:", ethers.formatEther(await etimToken.balanceOf(deployer.address)), "ETIM");
-    console.log("代币总量 ethFoundation:", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
+    console.log("代币分配 growthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
+    console.log("代币分配 deployer (Market+Eco+Community+Airdrop):", ethers.formatEther(await etimToken.balanceOf(deployer.address)), "ETIM");
+    console.log("代币分配 ethFoundation   :", ethers.formatEther(await etimToken.balanceOf(deployer1.address)), "ETIM");
 
     // ========== 设置合约间依赖关系 ==========
     console.log("\n🆗. 设置合约间依赖关系...");
