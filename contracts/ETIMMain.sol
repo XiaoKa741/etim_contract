@@ -54,7 +54,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     // Total ETIM allocated to growth pool
-    uint256 public constant GROWTH_POOL_SUPPLY = 1_925_700_000 * 10 ** 18;
+    uint256 public constant GROWTH_POOL_SUPPLY = 87_700_000 * 10 ** 18;
 
     // Base participation params
     uint256 public participationAmountMin = 100 * 10**6; // 100 USD (6 decimals)
