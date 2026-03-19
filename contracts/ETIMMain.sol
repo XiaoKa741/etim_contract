@@ -744,18 +744,21 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // Any S2+ player triggers a full push distribution to all S2+ players
     function claimS2PlusRewards() external nonReentrant {
+        _checkAndUpdateLevel(msg.sender);
         if (!users[msg.sender].s2PlusActive) revert NotParticipated();
         uint256 total = s2PlusPoolEth;
         if (total == 0) revert NoRewardsToClaim();
 
-        uint256 count = s2PlusPlayerList.length;
+        address[] memory players = s2PlusPlayerList;
+        uint256 count = players.length;
+
         uint256 share = total / count;
         s2PlusPoolEth = total - share * count; // dust accumulates
 
         if (share == 0) revert NoRewardsToClaim();
 
         for (uint256 i = 0; i < count; i++) {
-            address player = s2PlusPlayerList[i];
+            address player = players[i];
             (bool ok,) = player.call{value: share}("");
             if (ok) {
                 emit S2PlusRewardClaimed(player, share);
@@ -821,18 +824,21 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // Any S3+ player triggers a full push distribution to all S3+ players
     function claimS3PlusRewards() external nonReentrant {
+        _checkAndUpdateLevel(msg.sender);
         if (!users[msg.sender].s3PlusActive) revert NotParticipated();
         uint256 total = s3PlusPoolEth;
         if (total == 0) revert NoRewardsToClaim();
 
-        uint256 count = s3PlusPlayerList.length;
+        address[] memory players = s3PlusPlayerList;
+        uint256 count = players.length;
+
         uint256 share = total / count;
         s3PlusPoolEth = total - share * count; // dust accumulates
 
         if (share == 0) revert NoRewardsToClaim();
 
         for (uint256 i = 0; i < count; i++) {
-            address player = s3PlusPlayerList[i];
+            address player = players[i];
             (bool ok,) = player.call{value: share}("");
             if (ok) {
                 emit S3PlusRewardClaimed(player, share);
@@ -891,9 +897,12 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // Any S6 player triggers a full push distribution to all S6 players
     function claimS6Rewards() external nonReentrant {
+        _checkAndUpdateLevel(msg.sender);
         if (!users[msg.sender].s6Active) revert NotParticipated();
 
-        uint256 count = s6PlayerList.length;
+        // Copy to memory
+        address[] memory players = s6PlayerList;
+        uint256 count = players.length;
 
         // Calculate floor-divisible amount
         uint256 available = IETIMTaxHook(etimTaxHook).sellTaxToS6();
@@ -904,8 +913,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         IETIMTaxHook(etimTaxHook).flushS6ToMain(flushAmount);
 
         for (uint256 i = 0; i < count; i++) {
-            etimToken.safeTransfer(s6PlayerList[i], share);
-            emit S6RewardClaimed(s6PlayerList[i], share);
+            etimToken.safeTransfer(players[i], share);
+            emit S6RewardClaimed(players[i], share);
         }
     }
 

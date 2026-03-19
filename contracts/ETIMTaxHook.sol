@@ -43,6 +43,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     error ExactOutputNotSupported();
     error AlreadySet();
     error NotMainContract();
+    error InvalidParams();
 
     // =========================================================
     //                        EVENTS
@@ -276,8 +277,8 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     /// @notice Flush a specified amount of S6 rewards to ETIMMain for distribution
     function flushS6ToMain(uint256 amount) external nonReentrant {
         if (msg.sender != mainContract) revert NotMainContract();
-        if (mainContract == address(0) || etimContract == address(0)) return;
-        if (amount == 0 || amount > sellTaxToS6) return;
+        if (mainContract == address(0) || etimContract == address(0)) revert InvalidParams();
+        if (amount == 0 || amount > sellTaxToS6) revert InvalidParams();
         sellTaxToS6 -= amount;
         IERC20(etimContract).safeTransfer(mainContract, amount);
     }
