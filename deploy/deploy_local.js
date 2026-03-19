@@ -119,7 +119,8 @@ async function main() {
 
     // ========== 分配代币（总量 100,000,000 ETIM）==========
     console.log("\n🆗. 分配代币...");
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress,       ethers.parseEther("87700000")); // 87.7% Growth Pool
+    // 预留 100,000 ETIM 给 deployer 添加流动性，从 growthPool 扣除
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress,       ethers.parseEther("87600000")); // 87.6% Growth Pool (减 100k 用于流动性)
     await tx.wait();
     tx = await etimToken.connect(deployer).transfer(marketInfra.address,   ethers.parseEther("5000000"));  // 5%    Market Infra
     await tx.wait();
@@ -131,6 +132,7 @@ async function main() {
     await tx.wait();
     tx = await etimToken.connect(deployer).transfer(ethFoundation.address, ethers.parseEther("300000"));   // 0.3%  以太坊基金会
     await tx.wait();
+    // deployer 保留 100,000 ETIM 用于添加流动性
 
     console.log("代币分配 growthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
     console.log("代币分配 marketInfra     :", ethers.formatEther(await etimToken.balanceOf(marketInfra.address)), "ETIM");

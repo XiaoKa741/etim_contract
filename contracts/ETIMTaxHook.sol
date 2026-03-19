@@ -16,8 +16,6 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
-// import "hardhat/console.sol"; // only for local debugging
-
 // Progress sell — no business logic
 interface IETIMMain {
     function isGrowthPoolDepleted() external view returns (bool);
@@ -42,7 +40,6 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     error NothingToWithdraw();
     error TransferFailed();
     error BuyNotEnabled();
-    error SellNotEnabled();
     error ExactOutputNotSupported();
     error AlreadySet();
     error NotMainContract();
@@ -86,8 +83,6 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
 
     address public owner;
     address public pendingOwner;
-    // bool    public buyEnabled;
-    // bool    public sellEnabled;
 
     // =========================================================
     //                  WHITELIST (EXEMPT ADDRESSES)
@@ -175,45 +170,6 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         returns (bytes4, int128)
     {
         return (this.afterSwap.selector, 0);
-        /*
-        // console.log("[_afterSwap] ENTER"); // DEBUG
-        // Skip for whitelisted addresses
-        if (isExempt[sender]) {
-            // console.log("[_afterSwap] EXIT WHITE LIST"); // DEBUG
-            return (this.afterSwap.selector, 0);
-        }
-
-        // zeroForOne = true  → buy, output is currency1
-        // zeroForOne = false → sell, output is currency0
-        bool     isBuy          = params.zeroForOne;
-        int128   outputDelta    = isBuy ? delta.amount1() : delta.amount0();
-        Currency outputCurrency = isBuy ? key.currency1  : key.currency0;
-
-        // Check trading
-        if (isBuy && !buyEnabled) revert BuyNotEnabled();
-        if (!isBuy && !sellEnabled) revert SellNotEnabled();
-
-        // Only tax positive output (i.e., user actually receives tokens)
-        if (outputDelta <= 0) {
-            return (this.afterSwap.selector, 0);
-        }
-
-        uint256 taxBps = isBuy ? buyTaxBps : sellTaxBps;
-        if (taxBps == 0) {
-            return (this.afterSwap.selector, 0);
-        }
-        uint256 taxAmount = (uint256(uint128(outputDelta)) * taxBps) / BPS_DENOMINATOR;
-
-        if (taxAmount == 0) {
-            return (this.afterSwap.selector, 0);
-        }
-
-        // Take the tax amount from PoolManager into this contract
-        poolManager.take(outputCurrency, address(this), taxAmount);
-
-        // Return positive delta → tells V4 that user receives less by this amount
-        return (this.afterSwap.selector, taxAmount.toInt128());
-        */
     }
 
     /// @notice _beforeSwap: handle additional allocation logic when user sells ETIM
@@ -228,10 +184,8 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         whenNotPaused
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        // console.log("[_beforeSwap] ENTER ............."); // DEBUG
         // Skip for whitelisted addresses
         if (isExempt[sender]) {
-            // console.log("[_beforeSwap] EXIT WHITE LIST"); // DEBUG
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
@@ -240,9 +194,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         // zeroForOne = false → sell
         bool isBuy = params.zeroForOne;
 
-        // Check trading
-        // if (isBuy && !buyEnabled) revert BuyNotEnabled();
-        // if (!isBuy && !sellEnabled) revert SellNotEnabled();
+        // Buy disabled when growth pool is not depleted
         if(isBuy && !(IETIMMain(mainContract).isGrowthPoolDepleted())) revert BuyNotEnabled();
 
         // Only exactInput, not support exactOutput
@@ -261,15 +213,10 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         uint256 inAmount = uint256(-params.amountSpecified);
         uint256 taxAmount = (inAmount * taxBps) / BPS_DENOMINATOR;
         if (isBuy) {
-            // mint/burn
-            // poolManager.mint(address(this), key.currency0.toId(), taxAmount);
             poolManager.take(key.currency0, address(this), taxAmount);
-            // assign
             buyTax += taxAmount;
         } else {
-            // poolManager.mint(address(this), key.currency1.toId(), taxAmount);
             poolManager.take(key.currency1, address(this), taxAmount);
-            // assign
             uint256 toS6         = taxAmount / 6;
             uint256 toFoundation = taxAmount / 6;
             uint256 toOfficial   = taxAmount / 6;
@@ -310,16 +257,6 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         isExempt[account] = exempt;
         emit ExemptUpdated(account, exempt);
     }
-
-    /// @notice Enable/disable buy for non-exempt addresses
-    // function setBuyEnabled(bool enabled) external onlyOwner {
-    //     buyEnabled = enabled;
-    // }
-
-    /// @notice Enable/disable sell for non-exempt addresses
-    // function setSellEnabled(bool enabled) external onlyOwner {
-    //     sellEnabled = enabled;
-    // }
 
     /// @notice Set the ETIM token contract address (only once, by owner)
     function setTokenContract(address _etimContract) external onlyOwner {

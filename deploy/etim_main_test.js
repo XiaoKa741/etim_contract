@@ -6,7 +6,7 @@ const ETIMMainAddress = '0xe858D94ac68f48fc6d99f333204c8160785B4723';
 const ETIMTokenAddress = '0xb28C1C983Bb584cA4Ff3D9F381Cb23fC5bF0392A';
 const ETIMNodeAddress = '0xCfbCFd6A1847D919aCcb2861957EC54d1BffdA61';
 const ETIMPoolAddress = '0xd51e4Cc6e7891437B6dE33e5196AD206BC6065BA';
-const ETIMHookAddress = '0xAB24D7E2531c779BB30fA1d1f3Ea373024Ef00CC';
+const ETIMHookAddress = '0x626a8aa862d6a568cA92c9207709c9cba1f5C0Cc';
 const Permit2Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const PositionManagerAddress = '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e';
 const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
@@ -87,7 +87,7 @@ async function main() {
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
 
-    // console.log(ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
+    console.log("挖矿奖励：", ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmount()));
 
@@ -174,10 +174,11 @@ async function getEtimMainStatus(etimMain) {
     console.log('etimMain 价格(ETIM per ETH): ', ethers.formatEther(await etimMain.ethPriceInEtim()));
     console.log('etimMain 价格(USDC per ETH): ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
     console.log('etimMain 价格(ETIM per USDC): ', ethers.formatEther(await etimMain.etimPerUsd()));
-    console.log('etimMain 某日价格(ETIM per USDC): ', ethers.formatEther(await etimMain.dailyUsdEtimPrice(20514)));
+    console.log('etimMain 某日价格(ETIM per USDC): ', ethers.formatEther(await etimMain.dailyUsdEtimPrice(20513)));
     console.log('etimMain 总激活节点: ', await etimMain.totalActiveNodes());
     console.log('etimMain 激活节点奖励份额: ', ethers.formatEther(await etimMain.rewardPerNode()));
-    console.log('etimMain S2奖励(ETH): ', ethers.formatEther(await etimMain.s2RewardEth()));
+    console.log('etimMain S2奖励(ETH): ', ethers.formatEther(await etimMain.s2PlusPoolEth()));
+    console.log('etimMain S3奖励(ETH): ', ethers.formatEther(await etimMain.s3PlusPoolEth()));
     console.log('etimMain 基金会(ETH): ', ethers.formatEther(await etimMain.foundationRewardEth()));
     console.log('etimMain 奖池(ETH): ', ethers.formatEther(await etimMain.potRewardEth()));
     console.log('etimMain 官方(ETH): ', ethers.formatEther(await etimMain.officialRewardEth()));
@@ -193,7 +194,7 @@ async function getEtimTaxHookStatus(etimTaxHook) {
     console.log('etimTaxHook buyTax (ETH): ', ethers.formatEther(await etimTaxHook.buyTax()));
     console.log('etimTaxHook sellTaxToBurn (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToBurn()));
     console.log('etimTaxHook sellTaxToS6 (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToS6()));
-    console.log('etimTaxHook sellTaxToFundation (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToFundation()));
+    console.log('etimTaxHook sellTaxToFundation (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToFoundation()));
     console.log('etimTaxHook sellTaxToOfficial (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToOfficial()));
 }
 

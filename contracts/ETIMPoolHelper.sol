@@ -16,8 +16,6 @@ import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmo
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-// import "hardhat/console.sol"; // only for local debugging
-
 interface AggregatorV3Interface {
     function latestRoundData() external view returns (
         uint80 roundId,
@@ -265,8 +263,6 @@ contract ETIMPoolHelper is IUnlockCallback {
         if (msg.value < ethAmount) revert InsufficientETH();
 
         (int24 tickLower, int24 tickUpper) = _getTickRange();
-        // console.log("[swapEthToEtim] tickLower:", uint256(uint24(tickLower))); // DEBUG
-        // console.log("[swapEthToEtim] tickUpper:", uint256(uint24(tickUpper))); // DEBUG
 
         bytes memory result = poolManager.unlock(abi.encode(CallbackData({
             actionType: ActionType.SWAP,
@@ -322,8 +318,6 @@ contract ETIMPoolHelper is IUnlockCallback {
         if (msg.value < ethAmount) revert InsufficientETH();
 
         (int24 tickLower, int24 tickUpper) = _getTickRange();
-        // console.log("[swapAndAddLiquidity] tickLower:", uint256(int256(tickLower))); // DEBUG
-        // console.log("[swapAndAddLiquidity] tickUpper:", uint256(int256(tickUpper))); // DEBUG
 
         poolManager.unlock(abi.encode(CallbackData({
             actionType: ActionType.SWAP_AND_ADD_LIQUIDITY,
@@ -408,10 +402,6 @@ contract ETIMPoolHelper is IUnlockCallback {
             ""
         );
 
-        // console.log("[_handleAddLiquidity]:"); // DEBUG
-        // console.logInt(int256(delta.amount0())); // DEBUG
-        // console.logInt(int256(delta.amount1())); // DEBUG
-
         _settleDelta(delta);
 
         emit LiquidityAdded(data.etimAmount, data.ethAmount);
@@ -488,9 +478,6 @@ contract ETIMPoolHelper is IUnlockCallback {
             ""
         );
 
-        // console.logInt(int256(swapDelta.amount0())); // DEBUG
-        // console.logInt(int256(swapDelta.amount1())); // DEBUG
-
         if (swapDelta.amount0() < 0) {
             _settleEth(uint256(-int256(swapDelta.amount0())));
         }
@@ -511,10 +498,6 @@ contract ETIMPoolHelper is IUnlockCallback {
             liquidityEth,
             etimReceived
         );
-
-        // console.log("[_handleSwapAndAddLiquidity] liquidity:", uint256(liquidity)); // DEBUG
-        // console.log("[_handleSwapAndAddLiquidity] data.tickLower:", uint256(int256(data.tickLower))); // DEBUG
-        // console.log("[_handleSwapAndAddLiquidity] data.tickUpper:", uint256(int256(data.tickUpper))); // DEBUG
 
         (BalanceDelta liqDelta,) = poolManager.modifyLiquidity(
             etimEthPoolKey,
