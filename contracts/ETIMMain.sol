@@ -997,6 +997,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     // Owner injects exact amounts of LP and burn from pending (at least one non-zero, clamped to available)
     function triggerLpBurnAllocationExact(uint256 lpAmount, uint256 swapBurnAmount) external onlyOwner nonReentrant {
         if (lpAmount == 0 && swapBurnAmount == 0) revert InvalidParams();
+        if (pendingLpEth == 0 && pendingSwapBurnEth == 0) revert NothingPending();
         if (block.timestamp < lpBurnLastTrigger + lpBurnCooldown) revert CooldownNotElapsed();
 
         // Clamp to available pending amounts
