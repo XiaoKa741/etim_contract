@@ -68,7 +68,8 @@ contract ETIMPoolHelper is IUnlockCallback {
         ADD_LIQUIDITY,
         SWAP,
         SWAP_AND_ADD_LIQUIDITY,
-        SWAP_AND_BURN
+        SWAP_AND_BURN,
+        COLLECT_FEES
     }
 
     struct CallbackData {
@@ -105,6 +106,7 @@ contract ETIMPoolHelper is IUnlockCallback {
     event MainContractUpdated(address indexed previous, address indexed next);
     event OwnershipTransferStarted(address indexed currentOwner, address indexed pendingOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event FeesCollected(uint256 ethAmount, uint256 etimAmount);
 
     // =========================================================
     //                       MODIFIERS
@@ -370,6 +372,8 @@ contract ETIMPoolHelper is IUnlockCallback {
             return _handleSwap(data);
         } else if (data.actionType == ActionType.SWAP_AND_ADD_LIQUIDITY) {
             return _handleSwapAndAddLiquidity(data);
+        } else if (data.actionType == ActionType.COLLECT_FEES) {
+            return _handleCollectFees(data);
         } else {
             // SWAP_AND_BURN
             return _handleSwapAndBurn(data);
@@ -542,6 +546,32 @@ contract ETIMPoolHelper is IUnlockCallback {
         return "";
     }
 
+    function _handleCollectFees(CallbackData memory) internal returns (bytes memory) {
+        (int24 tickLower, int24 tickUpper) = _getTickRange();
+        
+        // liquidityDelta = 0 trigger fee claim
+        (BalanceDelta delta,) = poolManager.modifyLiquidity(
+            etimEthPoolKey,
+            ModifyLiquidityParams({
+                tickLower:      tickLower,
+                tickUpper:      tickUpper,
+                liquidityDelta: 0,          // 0 means just collect fees without changing position
+                salt:           bytes32(0)
+            }),
+            ""
+        );
+
+        // take out the collected fees to this contract
+        uint256 fee0 = delta.amount0() > 0 ? uint256(int256(delta.amount0())) : 0;
+        uint256 fee1 = delta.amount1() > 0 ? uint256(int256(delta.amount1())) : 0;
+
+        if (fee0 > 0) poolManager.take(etimEthPoolKey.currency0, address(this), fee0);
+        if (fee1 > 0) poolManager.take(etimEthPoolKey.currency1, address(this), fee1);
+        
+        emit FeesCollected(fee0, fee1);
+        return "";
+    }
+
     // =========================================================
     //                   SETTLEMENT HELPERS
     // =========================================================
@@ -589,17 +619,30 @@ contract ETIMPoolHelper is IUnlockCallback {
     //                     ADMIN FUNCTIONS
     // =========================================================
 
-    /// @notice Withdraw ERC20 tokens from this contract (only callable by mainContract)
-    function withdrawToken(IERC20 token, uint256 amount, address to) external onlyMainContract {
+    /// @notice Withdraw ERC20 tokens from this contract
+    function withdrawToken(uint256 amount, address to) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
-        token.safeTransfer(to, amount);
+        etim.safeTransfer(to, amount);
     }
 
-    /// @notice Withdraw ETH from this contract (only callable by mainContract)
-    function withdrawEth(uint256 amount, address to) external onlyMainContract {
+    /// @notice Withdraw ETH from this contract
+    function withdrawEth(uint256 amount, address to) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
         (bool ok,) = to.call{value: amount}("");
         if (!ok) revert ETHTransferFailed();
+    }
+
+    /// @notice Collect accumulated swap fees from the liquidity position
+    function collectFees() external onlyOwner {
+        poolManager.unlock(abi.encode(CallbackData({
+            actionType: ActionType.COLLECT_FEES,
+            sender:     msg.sender,
+            to:         address(this),
+            ethAmount:  0,
+            etimAmount: 0,
+            tickLower:  0,
+            tickUpper:  0
+        })));
     }
 
     /// @notice Set the main business contract address (only owner)

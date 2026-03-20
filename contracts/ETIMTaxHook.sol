@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -24,6 +25,7 @@ interface IETIMMain {
 /// @notice Uniswap V4 Hook — applies tax on buys/sells; tax is held in this contract and can be withdrawn by owner
 contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -44,6 +46,7 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
     error AlreadySet();
     error NotMainContract();
     error InvalidParams();
+    error NoLiquidity();
 
     // =========================================================
     //                        EVENTS
@@ -185,6 +188,10 @@ contract ETIMTaxHook is BaseHook, ReentrancyGuard, Pausable {
         whenNotPaused
         returns (bytes4, BeforeSwapDelta, uint24)
     {
+        // Check liquidity first
+        uint128 liquidity = poolManager.getLiquidity(key.toId());
+        if (liquidity == 0 ) revert NoLiquidity();
+
         // Skip for whitelisted addresses
         if (isExempt[sender]) {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
