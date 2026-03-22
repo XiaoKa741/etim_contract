@@ -9,7 +9,7 @@ async function main() {
 async function deploy() {
     // ETH Mainnet addresses
     const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-    const POOL_MANAGER_ADDRESS = "0x000000000004444c5dc75cB358380D2e3De08A90";
+    const POOL_MANAGER_ADDRESS = "0x000000000004444c5dc75cB358380D2e3dE08A90";
     const CREATE2_FACTORY = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
     const CHAINLINK_ETH_USD = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
 
@@ -21,7 +21,7 @@ async function deploy() {
 
     const [deployer] = await ethers.getSigners();
 
-    const marketInfra = { address: deployer.address };        // 5% 市场基础设施 Market Infra
+    const marketInfra = { address: "0xa9489529b893c13fa923e45d4c6cb20c913361d4" };  // 5% 市场基础设施 Market Infra
     const ecoFund = { address: "0x63BFB46f71757C23ef4352096800D9b916225c10" };      // 1% 生态建设基金
     const communityFund = { address: "0x3ed13128637f879858cF226ab1ca245C2F8B8eE3" };    // 1% 社区建设
     const airdrop = { address: "0xE2f8245BddA6d8F1AB49d75dA6960F2cD1a3Bc13" };    // 5% 空投 Airdrop
@@ -98,8 +98,7 @@ async function deploy() {
     ]);
     let tx = await deployer.sendTransaction({
         to: CREATE2_FACTORY,
-        data: deployData,
-        gasLimit: 8000000
+        data: deployData
     });
     await tx.wait();
     console.log("税收HOOK合约:", hookAddress);
@@ -177,7 +176,7 @@ async function deploy() {
         return prev;
     };
     const Q96 = 2n ** 96n;
-    const priceEtimPerEth = 2000n; // 1ETH = 2000ETIM
+    const priceEtimPerEth = 500000n; // 1ETH = 500000ETIM
     const sqrtPriceX96 = sqrtBigInt(priceEtimPerEth * Q96 * Q96);
     tx = await etimPool.initializePool(sqrtPriceX96);
     await tx.wait();
