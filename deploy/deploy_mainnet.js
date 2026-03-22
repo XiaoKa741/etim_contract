@@ -25,7 +25,7 @@ async function deploy() {
     const ecoFund = { address: "0x63BFB46f71757C23ef4352096800D9b916225c10" };      // 1% 生态建设基金
     const communityFund = { address: "0x3ed13128637f879858cF226ab1ca245C2F8B8eE3" };    // 1% 社区建设
     const airdrop = { address: "0xE2f8245BddA6d8F1AB49d75dA6960F2cD1a3Bc13" };    // 5% 空投 Airdrop
-    const ethFoundation = { address: "0x9fc3dc011b461664c835f2527fffb1169b3c213e" };   // 0.3% 以太坊基金会
+    const ethFoundation = { address: "0x9fc3dc011b461664c835f2527fffb1169b3c213e" };   // 0.1% 以太坊基金会
 
     console.log("部署者地址:", deployer.address);
     console.log("部署者余额:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH");
@@ -136,7 +136,7 @@ async function deploy() {
 
     // ========== 分配代币（总量 100,000,000 ETIM）==========
     console.log("\n🆗. 分配代币...");
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("87700000")); // 87.7% Growth Pool
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("87900000")); // 87.9% Growth Pool
     await tx.wait();
     tx = await etimToken.connect(deployer).transfer(marketInfra.address, ethers.parseEther("5000000"));  // 5% Market Infra
     await tx.wait();
@@ -146,7 +146,7 @@ async function deploy() {
     await tx.wait();
     tx = await etimToken.connect(deployer).transfer(airdrop.address, ethers.parseEther("5000000"));  // 5% 空投
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(ethFoundation.address, ethers.parseEther("300000"));   // 0.3% 以太坊基金会
+    tx = await etimToken.connect(deployer).transfer(ethFoundation.address, ethers.parseEther("100000"));   // 0.1% 以太坊基金会
     await tx.wait();
 
     console.log("代币分配 growthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
@@ -196,21 +196,6 @@ async function deploy() {
     tx = await etimHook.setMainContract(etimMainAddress);
     await tx.wait();
 
-    // // ========== 添加初始流动性 ==========
-    // console.log("\n🆗. 添加初始流动性 ETIM/ETH...");
-    // const ethAmount = ethers.parseEther("50");
-    // const etimAmount = ethers.parseEther("100000");
-    // tx = await etimToken.connect(deployer).approve(etimPoolAddress, ethers.MaxInt256);
-    // await tx.wait();
-    // tx = await etimPool.addLiquidity(ethAmount, etimAmount, { value: ethAmount });
-    // await tx.wait();
-    // console.log("初始流动性添加完成");
-
-    // // ========== 更新每日价格 ==========
-    // console.log("\n🆗. 更新每日价格...");
-    // tx = await etimMain.updateDailyPrice();
-    // await tx.wait();
-
     // ========== 部署总结 ==========
     console.log("\n" + "=".repeat(60));
     console.log("部署完成！合约地址汇总:");
@@ -228,8 +213,8 @@ async function addLiquidity() {
 
     const [deployer] = await ethers.getSigners();
 
-    const ETIMTokenAddress = "0xa9324a1EDf85006BDe21c085290B1a2C817Dc51E"; // 替换为实际地址
-    const ETIMPoolAddress = "0x0A4fa9e585f2ed474D56656e086B8ABe8eD1C6c8"; // 替换为实际地址
+    const ETIMTokenAddress = ""; // 替换为实际地址
+    const ETIMPoolAddress = ""; // 替换为实际地址
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
 
@@ -249,7 +234,7 @@ async function updateDailyPrice() {
 
     const [deployer] = await ethers.getSigners();
 
-    const ETIMMainAddress = "0x8056B915F9BB20ec75DDD147fFec1E90754aB546"; // 替换为实际地址
+    const ETIMMainAddress = ""; // 替换为实际地址
     const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
 
     tx = await etimMain.connect(deployer).updateDailyPrice();
