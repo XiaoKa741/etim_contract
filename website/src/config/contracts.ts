@@ -1,0 +1,7 @@
+export const CONTRACTS = {
+  ETIMToken: '0xc0eC2E5f5467d6A5A3823e842d4CB7179c8E6952' as const,
+  ETIMNode: '0x2461EefbbA0f312a0a22b5ED9F0b18FAc3292CCb' as const,
+  ETIMTaxHook: '0x41A9Bf2969Af822942A553baBd6d8DDA0dfF80Cc' as const,
+  ETIMPoolHelper: '0x24A9607b8D7ceDf6Db3313f13134BaA79bc82845' as const,
+  ETIMMain: '0xbC953B7537F4A29c3b3d6ebed214ae37375ba0F6' as const,
+} as const;
