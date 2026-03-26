@@ -17,6 +17,8 @@ export const config = createConfig({
     [mainnet.id]: http(RPC_URL),
   },
   ssr: true,
+  // Poll every 2 seconds for transaction receipts
+  pollingInterval: 2_000,
   storage: createStorage({
     storage: typeof window !== 'undefined' ? {
       getItem: (key) => {

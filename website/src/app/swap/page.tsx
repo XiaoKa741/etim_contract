@@ -10,7 +10,7 @@ import {
 } from 'wagmi';
 import { formatEther, parseEther, Address, encodeAbiParameters, encodePacked } from 'viem';
 import { ConnectButton } from '@/components/ConnectButton';
-import { CONTRACTS, UNIVERSAL_ROUTER, PERMIT2_ADDRESS, QUOTER } from '@/config/contracts';
+import { CONTRACTS, UNIVERSAL_ROUTER, QUOTER } from '@/config/contracts';
 import { ERC20ABI, UniversalRouterABI, QuoterABI } from '@/config/abis';
 
 const ETIMTokenAddress = CONTRACTS.ETIMToken as Address;
@@ -57,7 +57,7 @@ function formatAmount(amount: string | null, maxDecimals: number = 6): string {
 export default function SwapPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
-  const [fromToken, setFromToken] = useState<TokenType>('ETH');
+  const [fromToken, setFromToken] = useState<TokenType>('ETIM');
   const [inputAmount, setInputAmount] = useState('');
   const [outputAmount, setOutputAmount] = useState<string | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
@@ -65,22 +65,39 @@ export default function SwapPage() {
   const [successTxHash, setSuccessTxHash] = useState<string | null>(null);
   const [etimPerEth, setEtimPerEth] = useState<number>(0);
   const [willRevert, setWillRevert] = useState<string | null>(null);
+  const [timeoutHash, setTimeoutHash] = useState<string | null>(null);
+  // Manually track approve state to avoid wagmi hook timing conflicts
+  const [isApproving, setIsApproving] = useState(false);
 
   // Write hooks
-  const { writeContractAsync: writeApprove, data: approveTxHash, isPending: isApprovePending } = useWriteContract();
+  const { writeContractAsync: writeApprove } = useWriteContract();
   const { writeContractAsync: writeSwap, data: swapTxHash, isPending: isSwapPending } = useWriteContract();
 
-  const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({ hash: approveTxHash });
   const {
     isLoading: isSwapConfirming,
     isSuccess: isSwapSuccess,
     isError: isSwapError,
     error: swapError,
-    status: swapStatus,
-  } = useWaitForTransactionReceipt({ hash: swapTxHash });
+  } = useWaitForTransactionReceipt({
+    hash: swapTxHash,
+    timeout: 120_000, // 2 minutes timeout
+  });
 
-  // isBusy should be false when status is 'success' or 'error'
-  const isBusy = !isSwapSuccess && !isSwapError && (isApprovePending || isApproveConfirming || isSwapPending || isSwapConfirming);
+  // Track timeout - show hash if confirming takes too long
+  useEffect(() => {
+    if (swapTxHash && isSwapConfirming) {
+      const timeoutId = setTimeout(() => {
+        if (isSwapConfirming && !isSwapSuccess && !isSwapError) {
+          setTimeoutHash(swapTxHash);
+        }
+      }, 120_000); // 2 minutes
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [swapTxHash, isSwapConfirming, isSwapSuccess, isSwapError]);
+
+  // isBusy should be false when status is 'success', 'error', or 'timeout'
+  const isBusy = !isSwapSuccess && !isSwapError && !timeoutHash && (isApproving || isSwapPending || isSwapConfirming);
 
   // Balances
   const { data: etimBalanceData } = useBalance({ address, token: ETIMTokenAddress });
@@ -92,28 +109,9 @@ export default function SwapPage() {
   const fromBalance = fromToken === 'ETH' ? ethBalance : etimBalance;
   const toBalance = toToken === 'ETH' ? ethBalance : etimBalance;
 
-  // Fetch pool price info once on mount (not on every input change)
-  useEffect(() => {
-    if (!publicClient || etimPerEth > 0) return; // Skip if already fetched
-
-    // Use Quoter to get ETIM per ETH (most accurate)
-    publicClient.readContract({
-      address: QUOTER,
-      abi: QuoterABI,
-      functionName: 'quoteExactInputSingle',
-      args: [{
-        poolKey: POOL_KEY,
-        zeroForOne: true,
-        exactAmount: parseEther('1'),
-        hookData: '0x',
-      }],
-    }).then((result) => {
-      const [etimOut] = result as [bigint, bigint];
-      const etimPerEthValue = Number(formatEther(etimOut));
-      setEtimPerEth(etimPerEthValue);
-      console.log('[Quote 1 ETH] ETIM output:', etimPerEthValue);
-    }).catch(console.error);
-  }, [publicClient, etimPerEth]);
+  // Note: We don't fetch pool price on mount because:
+  // - ETH → ETIM (zeroForOne=true) is blocked by Hook contract
+  // - Quoter simulation would revert for blocked directions
 
   // Quote output amount using Quoter (with debounce to reduce RPC calls)
   useEffect(() => {
@@ -194,6 +192,7 @@ export default function SwapPage() {
       setInputAmount('');
       setOutputAmount(null);
       setWillRevert(null);
+      setTimeoutHash(null); // Clear timeout on success
     }
   }, [isSwapSuccess, swapTxHash]);
 
@@ -202,6 +201,7 @@ export default function SwapPage() {
     if (isSwapError) {
       const errorMsg = swapError instanceof Error ? swapError.message : 'Transaction failed';
       setError(parseSwapError(swapError));
+      setTimeoutHash(null); // Clear timeout on error
       console.error('[Swap Failed]:', errorMsg);
     }
   }, [isSwapError, swapError]);
@@ -211,6 +211,7 @@ export default function SwapPage() {
     if (!address) return;
     setError(null);
     setSuccessTxHash(null);
+    setTimeoutHash(null);
 
     let ethAmount: bigint;
     try {
@@ -222,23 +223,37 @@ export default function SwapPage() {
     }
 
     try {
-      // Approve for ETIM → ETH
+      const recipient = address as Address;
+      const zeroForOne = fromToken === 'ETH';
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800); // 30 min
+
+      // Approve for ETIM → ETH: approve Universal Router directly (not Permit2)
       if (fromToken === 'ETIM') {
         console.log('[Approve]', {
           token: ETIMTokenAddress,
-          spender: PERMIT2_ADDRESS,
+          spender: UNIVERSAL_ROUTER,
           amount: ethAmount.toString(),
         });
-        await writeApprove({
-          address: ETIMTokenAddress,
-          abi: ERC20ABI,
-          functionName: 'approve',
-          args: [PERMIT2_ADDRESS, ethAmount],
-        });
+        setIsApproving(true);
+        try {
+          const approveTxHash = await writeApprove({
+            address: ETIMTokenAddress,
+            abi: ERC20ABI,
+            functionName: 'approve',
+            args: [UNIVERSAL_ROUTER, ethAmount],
+          });
+          console.log('[Approve submitted]', approveTxHash);
+          await publicClient!.waitForTransactionReceipt({ hash: approveTxHash });
+          console.log('[Approve confirmed]');
+        } finally {
+          setIsApproving(false);
+        }
       }
 
-      const recipient = address as Address;
-      const zeroForOne = fromToken === 'ETH';
+      // Price limits based on swap direction
+      const MIN_PRICE_LIMIT = BigInt('4295128740');
+      const MAX_PRICE_LIMIT = BigInt('1461446703485210103287273052203988822378723970341');
+      const sqrtPriceLimitX96 = zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT;
 
       // V4 Actions: SWAP_EXACT_IN_SINGLE + SETTLE + TAKE
       const actions = encodePacked(
@@ -246,42 +261,49 @@ export default function SwapPage() {
         [V4_ACTION_SWAP_EXACT_IN_SINGLE, V4_ACTION_SETTLE, V4_ACTION_TAKE]
       );
 
-      // SWAP_EXACT_IN_SINGLE params
+      // SWAP_EXACT_IN_SINGLE params — must be a nested tuple matching V4 spec
       const swapParams = encodeAbiParameters(
-        [
-          { type: 'address' },
-          { type: 'address' },
-          { type: 'uint24' },
-          { type: 'int24' },
-          { type: 'address' },
-          { type: 'bool' },
-          { type: 'uint128' },
-          { type: 'uint128' },
-          { type: 'bytes' },
-        ],
-        [
-          POOL_KEY.currency0,
-          POOL_KEY.currency1,
-          POOL_KEY.fee,
-          POOL_KEY.tickSpacing,
-          POOL_KEY.hooks,
+        [{
+          type: 'tuple',
+          components: [
+            {
+              name: 'poolKey',
+              type: 'tuple',
+              components: [
+                { name: 'currency0', type: 'address' },
+                { name: 'currency1', type: 'address' },
+                { name: 'fee', type: 'uint24' },
+                { name: 'tickSpacing', type: 'int24' },
+                { name: 'hooks', type: 'address' },
+              ],
+            },
+            { name: 'zeroForOne', type: 'bool' },
+            { name: 'amountSpecified', type: 'int256' },
+            { name: 'sqrtPriceLimitX96', type: 'uint160' },
+            { name: 'hookData', type: 'bytes' },
+          ],
+        }],
+        [{
+          poolKey: POOL_KEY,
           zeroForOne,
-          ethAmount,
-          BigInt(0),
-          '0x',
-        ]
+          amountSpecified: -ethAmount,  // negative = exactInput (positive would be exactOutput)
+          sqrtPriceLimitX96,
+          hookData: '0x',
+        }]
       );
 
-      // SETTLE params
+      // SETTLE params: currency to settle, amount (use actual amount), payerIsUser=true
+      const settleCurrency = zeroForOne ? POOL_KEY.currency0 : POOL_KEY.currency1;
       const settleParams = encodeAbiParameters(
         [{ type: 'address' }, { type: 'uint256' }, { type: 'bool' }],
-        [zeroForOne ? POOL_KEY.currency0 : POOL_KEY.currency1, FULL_DELTA_AMOUNT, true]
+        [settleCurrency, ethAmount, true]
       );
 
-      // TAKE params
+      // TAKE params: currency to take, recipient, FULL_DELTA_AMOUNT means take all
+      const takeCurrency = zeroForOne ? POOL_KEY.currency1 : POOL_KEY.currency0;
       const takeParams = encodeAbiParameters(
         [{ type: 'address' }, { type: 'address' }, { type: 'uint256' }],
-        [zeroForOne ? POOL_KEY.currency1 : POOL_KEY.currency0, recipient, FULL_DELTA_AMOUNT]
+        [takeCurrency, recipient, FULL_DELTA_AMOUNT]
       );
 
       // V4_SWAP input
@@ -296,15 +318,14 @@ export default function SwapPage() {
         inputAmountWei: ethAmount.toString(),
         zeroForOne,
         recipient,
-        actions: actions,
-        CMD_V4_SWAP,
+        deadline: deadline.toString(),
       });
 
       await writeSwap({
         address: UNIVERSAL_ROUTER,
         abi: UniversalRouterABI,
         functionName: 'execute',
-        args: [CMD_V4_SWAP, [input]],
+        args: [CMD_V4_SWAP as `0x${string}`, [input], deadline],
         ...(fromToken === 'ETH' && { value: ethAmount }),
       });
     } catch (err: unknown) {
@@ -351,7 +372,7 @@ export default function SwapPage() {
 
   const buttonState = (() => {
     if (!isConnected) return { label: 'Connect Wallet', disabled: false };
-    if (isApprovePending || isApproveConfirming) return { label: 'Approving…', disabled: true };
+    if (isApproving) return { label: 'Approving…', disabled: true };
     if (isSwapPending || isSwapConfirming) return { label: 'Swapping…', disabled: true };
     if (!inputAmount) return { label: 'Enter an amount', disabled: true };
     if (isQuoting) return { label: 'Quoting…', disabled: true };
@@ -466,7 +487,7 @@ export default function SwapPage() {
         </div>
 
         {/* Approve Step */}
-        {fromToken === 'ETIM' && (isApprovePending || isApproveConfirming) && (
+        {fromToken === 'ETIM' && isApproving && (
           <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
             <p className="text-yellow-400 text-sm">Step 1/2 — Approving ETIM…</p>
           </div>
@@ -490,6 +511,22 @@ export default function SwapPage() {
               className="text-green-300 text-xs underline hover:text-green-200"
             >
               View on Etherscan →
+            </a>
+          </div>
+        )}
+
+        {/* Timeout - Transaction pending for too long */}
+        {timeoutHash && !isSwapSuccess && !isSwapError && (
+          <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+            <p className="text-blue-400 text-sm">Transaction submitted. Waiting for confirmation...</p>
+            <p className="text-gray-400 text-xs mt-1">Check status on Etherscan:</p>
+            <a
+              href={`https://etherscan.io/tx/${timeoutHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-300 text-xs underline hover:text-blue-200 font-mono break-all"
+            >
+              {timeoutHash}
             </a>
           </div>
         )}
