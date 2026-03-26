@@ -10,8 +10,8 @@ import {
 } from 'wagmi';
 import { formatEther, parseEther, Address, encodeAbiParameters, encodePacked } from 'viem';
 import { ConnectButton } from '@/components/ConnectButton';
-import { CONTRACTS, UNIVERSAL_ROUTER, QUOTER } from '@/config/contracts';
-import { ERC20ABI, UniversalRouterABI, QuoterABI } from '@/config/abis';
+import { CONTRACTS, UNIVERSAL_ROUTER, PERMIT2_ADDRESS, QUOTER } from '@/config/contracts';
+import { ERC20ABI, UniversalRouterABI, QuoterABI, Permit2ABI } from '@/config/abis';
 
 const ETIMTokenAddress = CONTRACTS.ETIMToken as Address;
 const ETIMTaxHookAddress = CONTRACTS.ETIMTaxHook as Address;
@@ -27,13 +27,14 @@ const POOL_KEY = {
 
 // V4 Actions
 const V4_ACTION_SWAP_EXACT_IN_SINGLE = 0x06;
-const V4_ACTION_SETTLE = 0x0b;
-const V4_ACTION_TAKE = 0x0e;
+const V4_ACTION_SETTLE_ALL = 0x0c;
+const V4_ACTION_TAKE_ALL = 0x0f;
 
 // Constants
 const CMD_V4_SWAP = '0x10';
 const ETH_GAS_BUFFER = parseEther('0.005');
-const FULL_DELTA_AMOUNT = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+const MAX_UINT160 = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF');
+const MAX_UINT48 = BigInt('0xFFFFFFFFFFFF');
 
 type TokenType = 'ETH' | 'ETIM';
 
@@ -227,24 +228,40 @@ export default function SwapPage() {
       const zeroForOne = fromToken === 'ETH';
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800); // 30 min
 
-      // Approve for ETIM → ETH: approve Universal Router directly (not Permit2)
+      // Approve for ETIM → ETH: approve Permit2, then Permit2 approves Universal Router
       if (fromToken === 'ETIM') {
-        console.log('[Approve]', {
-          token: ETIMTokenAddress,
-          spender: UNIVERSAL_ROUTER,
-          amount: ethAmount.toString(),
-        });
         setIsApproving(true);
         try {
-          const approveTxHash = await writeApprove({
+          // Step 1: Approve ETIM to Permit2 (max approval, only needed once)
+          const currentAllowance = await publicClient!.readContract({
             address: ETIMTokenAddress,
             abi: ERC20ABI,
+            functionName: 'allowance',
+            args: [address, PERMIT2_ADDRESS as Address],
+          }) as bigint;
+
+          if (currentAllowance < ethAmount) {
+            console.log('[Approve ETIM → Permit2]');
+            const approveTxHash = await writeApprove({
+              address: ETIMTokenAddress,
+              abi: ERC20ABI,
+              functionName: 'approve',
+              args: [PERMIT2_ADDRESS as Address, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
+            });
+            await publicClient!.waitForTransactionReceipt({ hash: approveTxHash });
+            console.log('[Approve ETIM → Permit2 confirmed]');
+          }
+
+          // Step 2: Permit2 approve Universal Router
+          console.log('[Permit2 approve → Universal Router]');
+          const permit2ApproveTxHash = await writeApprove({
+            address: PERMIT2_ADDRESS as Address,
+            abi: Permit2ABI,
             functionName: 'approve',
-            args: [UNIVERSAL_ROUTER, ethAmount],
+            args: [ETIMTokenAddress, UNIVERSAL_ROUTER as Address, MAX_UINT160, MAX_UINT48],
           });
-          console.log('[Approve submitted]', approveTxHash);
-          await publicClient!.waitForTransactionReceipt({ hash: approveTxHash });
-          console.log('[Approve confirmed]');
+          await publicClient!.waitForTransactionReceipt({ hash: permit2ApproveTxHash });
+          console.log('[Permit2 approve confirmed]');
         } finally {
           setIsApproving(false);
         }
@@ -255,13 +272,13 @@ export default function SwapPage() {
       const MAX_PRICE_LIMIT = BigInt('1461446703485210103287273052203988822378723970341');
       const sqrtPriceLimitX96 = zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT;
 
-      // V4 Actions: SWAP_EXACT_IN_SINGLE + SETTLE + TAKE
+      // V4 Actions: SWAP_EXACT_IN_SINGLE + SETTLE_ALL + TAKE_ALL
       const actions = encodePacked(
         ['uint8', 'uint8', 'uint8'],
-        [V4_ACTION_SWAP_EXACT_IN_SINGLE, V4_ACTION_SETTLE, V4_ACTION_TAKE]
+        [V4_ACTION_SWAP_EXACT_IN_SINGLE, V4_ACTION_SETTLE_ALL, V4_ACTION_TAKE_ALL]
       );
 
-      // SWAP_EXACT_IN_SINGLE params — must be a nested tuple matching V4 spec
+      // SWAP_EXACT_IN_SINGLE params
       const swapParams = encodeAbiParameters(
         [{
           type: 'tuple',
@@ -278,32 +295,32 @@ export default function SwapPage() {
               ],
             },
             { name: 'zeroForOne', type: 'bool' },
-            { name: 'amountSpecified', type: 'int256' },
-            { name: 'sqrtPriceLimitX96', type: 'uint160' },
+            { name: 'amountIn', type: 'uint128' },
+            { name: 'amountOutMinimum', type: 'uint128' },
             { name: 'hookData', type: 'bytes' },
           ],
         }],
         [{
           poolKey: POOL_KEY,
           zeroForOne,
-          amountSpecified: -ethAmount,  // negative = exactInput (positive would be exactOutput)
-          sqrtPriceLimitX96,
+          amountIn: ethAmount,
+          amountOutMinimum: BigInt(0),  // TODO: add slippage protection
           hookData: '0x',
         }]
       );
 
-      // SETTLE params: currency to settle, amount (use actual amount), payerIsUser=true
+      // SETTLE_ALL params: currency, maxAmount
       const settleCurrency = zeroForOne ? POOL_KEY.currency0 : POOL_KEY.currency1;
       const settleParams = encodeAbiParameters(
-        [{ type: 'address' }, { type: 'uint256' }, { type: 'bool' }],
-        [settleCurrency, ethAmount, true]
+        [{ type: 'address' }, { type: 'uint256' }],
+        [settleCurrency, ethAmount]
       );
 
-      // TAKE params: currency to take, recipient, FULL_DELTA_AMOUNT means take all
+      // TAKE_ALL params: currency, minAmount
       const takeCurrency = zeroForOne ? POOL_KEY.currency1 : POOL_KEY.currency0;
       const takeParams = encodeAbiParameters(
-        [{ type: 'address' }, { type: 'address' }, { type: 'uint256' }],
-        [takeCurrency, recipient, FULL_DELTA_AMOUNT]
+        [{ type: 'address' }, { type: 'uint128' }],
+        [takeCurrency, BigInt(0)]  // TODO: add slippage protection
       );
 
       // V4_SWAP input
