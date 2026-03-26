@@ -71,6 +71,9 @@ export function Navbar() {
             <Link href="/" className="text-gray-300 hover:text-white transition-colors text-sm">
               {t('nav.home')}
             </Link>
+            <Link href="/swap" className="text-gray-300 hover:text-white transition-colors text-sm">
+              {t('nav.swap')}
+            </Link>
             <Link href="/dashboard" className="text-gray-300 hover:text-white transition-colors text-sm">
               {t('nav.dashboard')}
             </Link>
@@ -104,6 +107,9 @@ export function Navbar() {
           <div className="flex flex-col gap-3">
             <Link href="/" className="text-gray-300 hover:text-white py-2" onClick={() => setMobileOpen(false)}>
               {t('nav.home')}
+            </Link>
+            <Link href="/swap" className="text-gray-300 hover:text-white py-2" onClick={() => setMobileOpen(false)}>
+              {t('nav.swap')}
             </Link>
             <Link href="/dashboard" className="text-gray-300 hover:text-white py-2" onClick={() => setMobileOpen(false)}>
               {t('nav.dashboard')}

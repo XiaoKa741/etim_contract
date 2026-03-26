@@ -41,12 +41,12 @@ export default function WhitepaperPage() {
                 </tr>
               </thead>
               <tbody className="text-gray-300">
-                <tr className="border-b border-gray-700/50"><td className="py-2">Growth Pool (Mining)</td><td className="text-right">87,700,000</td><td className="text-right">87.7%</td></tr>
+                <tr className="border-b border-gray-700/50"><td className="py-2">Growth Pool (Mining)</td><td className="text-right">87,900,000</td><td className="text-right">87.9%</td></tr>
                 <tr className="border-b border-gray-700/50"><td className="py-2">Market Infrastructure</td><td className="text-right">5,000,000</td><td className="text-right">5%</td></tr>
                 <tr className="border-b border-gray-700/50"><td className="py-2">Airdrop</td><td className="text-right">5,000,000</td><td className="text-right">5%</td></tr>
                 <tr className="border-b border-gray-700/50"><td className="py-2">Ecosystem Fund</td><td className="text-right">1,000,000</td><td className="text-right">1%</td></tr>
                 <tr className="border-b border-gray-700/50"><td className="py-2">Community Fund</td><td className="text-right">1,000,000</td><td className="text-right">1%</td></tr>
-                <tr><td className="py-2">Ethereum Foundation</td><td className="text-right">300,000</td><td className="text-right">0.3%</td></tr>
+                <tr><td className="py-2">Ethereum Foundation</td><td className="text-right">100,000</td><td className="text-right">0.1%</td></tr>
               </tbody>
             </table>
           </div>

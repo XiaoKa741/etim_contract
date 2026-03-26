@@ -4,13 +4,17 @@ import { createConfig, createStorage, http } from 'wagmi';
 import { mainnet } from 'wagmi/chains';
 import { injected } from 'wagmi/connectors';
 
+// Free Ethereum RPC endpoints (no API key required)
+// publicnode is reliable and free
+const RPC_URL = 'https://ethereum.publicnode.com';
+
 export const config = createConfig({
   chains: [mainnet],
   connectors: [
     injected({ shimDisconnect: true }),
   ],
   transports: {
-    [mainnet.id]: http('https://eth.llamarpc.com'),
+    [mainnet.id]: http(RPC_URL),
   },
   ssr: true,
   storage: createStorage({
