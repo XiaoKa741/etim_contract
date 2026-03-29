@@ -87,6 +87,11 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     uint256 public lpBurnLastTrigger  = 0;
     uint256 public lpBurnAutoRatio    = 1000; // ratio applied to LP and burn portions separately (denominator 1000)
 
+    // LP+Burn manual trigger
+    uint256 public lpBurnManualRatio    = 10; // manual allocation ratio (LP+Burn)
+    uint256 public lpManualAmount       = 0;  // manual allocation a fixed amount for LP
+    uint256 public swapBurnManualAmount = 0;  // manual allocation a fixed amount for Burn
+
     // Node reward tracking
     uint256 public constant NODE_QUOTA = 300 * 10 ** 6;
     uint256 public rewardPerNode;
@@ -198,6 +203,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     event S3PlusEthTransferFailed(address indexed user, uint256 amount);
     event S2PlusPendingEthWithdrawn(address indexed user, uint256 amount);
     event S3PlusPendingEthWithdrawn(address indexed user, uint256 amount);
+    event LpBurnManualTriggered(address indexed caller, uint256 lpAmount, uint256 swapBurnAmount);
 
     constructor(
         address _etimToken,
@@ -943,8 +949,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     //                   PRICE & DAILY STATS
     // =========================================================
 
-    // Update daily prices (called by owner once per day)
-    function updateDailyPrice() external onlyOwner {
+    // Update daily prices (called per day)
+    function updateDailyPrice() external {
         uint256 currentDay = block.timestamp / 1 days;
 
         uint256 newEthEtimPrice = etimPoolHelper.getEtimPerEth();
@@ -976,26 +982,30 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     //                   LP+BURN RATE-LIMITED ALLOCATION
     // =========================================================
 
-    // Owner manually injects a ratio of pending LP and burn separately
-    function triggerLpBurnAllocation(uint256 ratio) external onlyOwner nonReentrant {
-        if (ratio == 0 || ratio > FEE_DENOMINATOR) revert InvalidParams();
+    // Manually injects a ratio of pending LP and burn separately
+    function triggerLpBurnAllocation() external nonReentrant {
         if (pendingLpEth == 0 && pendingSwapBurnEth == 0) revert NothingPending();
         if (block.timestamp < lpBurnLastTrigger + lpBurnCooldown) revert CooldownNotElapsed();
 
-        uint256 lpAmount       = pendingLpEth       * ratio / FEE_DENOMINATOR;
-        uint256 swapBurnAmount = pendingSwapBurnEth * ratio / FEE_DENOMINATOR;
+        uint256 lpAmount       = pendingLpEth       * lpBurnManualRatio / FEE_DENOMINATOR;
+        uint256 swapBurnAmount = pendingSwapBurnEth * lpBurnManualRatio / FEE_DENOMINATOR;
         if (lpAmount == 0 && swapBurnAmount == 0) revert InvalidParams();
 
         pendingLpEth       -= lpAmount;
         pendingSwapBurnEth -= swapBurnAmount;
         lpBurnLastTrigger = block.timestamp;
 
+        emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
+
         if (lpAmount > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpAmount}(lpAmount);
         if (swapBurnAmount > 0) etimPoolHelper.swapAndBurn{value: swapBurnAmount}(swapBurnAmount);
     }
 
-    // Owner injects exact amounts of LP and burn from pending (at least one non-zero, clamped to available)
-    function triggerLpBurnAllocationExact(uint256 lpAmount, uint256 swapBurnAmount) external onlyOwner nonReentrant {
+    // Manually injects exact amounts of LP and burn from pending
+    function triggerLpBurnAllocationExact() external nonReentrant {
+        uint256 lpAmount       = lpManualAmount;
+        uint256 swapBurnAmount = swapBurnManualAmount;
+
         if (lpAmount == 0 && swapBurnAmount == 0) revert InvalidParams();
         if (pendingLpEth == 0 && pendingSwapBurnEth == 0) revert NothingPending();
         if (block.timestamp < lpBurnLastTrigger + lpBurnCooldown) revert CooldownNotElapsed();
@@ -1003,10 +1013,13 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         // Clamp to available pending amounts
         if (lpAmount > pendingLpEth)       lpAmount = pendingLpEth;
         if (swapBurnAmount > pendingSwapBurnEth) swapBurnAmount = pendingSwapBurnEth;
+        if (lpAmount == 0 && swapBurnAmount == 0) revert InvalidParams();
 
         pendingLpEth       -= lpAmount;
         pendingSwapBurnEth -= swapBurnAmount;
         lpBurnLastTrigger = block.timestamp;
+
+        emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
 
         if (lpAmount > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpAmount}(lpAmount);
         if (swapBurnAmount > 0) etimPoolHelper.swapAndBurn{value: swapBurnAmount}(swapBurnAmount);
@@ -1019,6 +1032,16 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     function setLpBurnAutoRatio(uint256 ratio) external onlyOwner {
         if (ratio > FEE_DENOMINATOR) revert InvalidParams();
         lpBurnAutoRatio = ratio;
+    }
+
+    function setLpBurnManualRatio(uint256 ratio) external onlyOwner {
+        if (ratio > FEE_DENOMINATOR) revert InvalidParams();
+        lpBurnManualRatio = ratio;
+    }
+
+    function setLpBurnManualAmount(uint256 lpAmount, uint256 swapBurnAmount) external onlyOwner {
+        lpManualAmount       = lpAmount;
+        swapBurnManualAmount = swapBurnAmount;
     }
 
     // =========================================================
