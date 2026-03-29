@@ -58,7 +58,7 @@ export function HeroSection() {
         <div className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto">
           {[
             { label: t('hero.totalSupply'), value: '100M ETIM' },
-            { label: t('hero.miningPool'), value: '87.7%' },
+            { label: t('hero.miningPool'), value: '87.9%' },
             { label: t('hero.depositRange'), value: '$100-$150' },
             { label: t('hero.nodeNfts'), value: '500 Max' },
           ].map((stat) => (
