@@ -1,10 +1,10 @@
 // Mainnet deployment addresses
 export const CONTRACTS = {
-  ETIMToken: '0xc0eC2E5f5467d6A5A3823e842d4CB7179c8E6952' as const,
+  ETIMToken: '0x8EC875EA3c60BE1DFaC9C4358c83c843dB66748A' as const,
   ETIMNode: '0x2461EefbbA0f312a0a22b5ED9F0b18FAc3292CCb' as const,
-  ETIMTaxHook: '0x41A9Bf2969Af822942A553baBd6d8DDA0dfF80Cc' as const,
-  ETIMPoolHelper: '0x24A9607b8D7ceDf6Db3313f13134BaA79bc82845' as const,
-  ETIMMain: '0xbC953B7537F4A29c3b3d6ebed214ae37375ba0F6' as const,
+  ETIMTaxHook: '0x05388fB8B99B66867f08b2841D6bAaea58B040cc' as const,
+  ETIMPoolHelper: '0x89ed241231772BE005de08C5d3A99e56c6D516D9' as const,
+  ETIMMain: '0x82Dc2335B01c94dd97fbb5cffd58aa11DE8Bb19F' as const,
 } as const;
 
 // Uniswap V4 contracts (not displayed on website)

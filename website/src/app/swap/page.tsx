@@ -258,7 +258,7 @@ export default function SwapPage() {
             address: PERMIT2_ADDRESS as Address,
             abi: Permit2ABI,
             functionName: 'approve',
-            args: [ETIMTokenAddress, UNIVERSAL_ROUTER as Address, MAX_UINT160, MAX_UINT48],
+            args: [ETIMTokenAddress, UNIVERSAL_ROUTER as Address, MAX_UINT160, Number(MAX_UINT48)],
           });
           await publicClient!.waitForTransactionReceipt({ hash: permit2ApproveTxHash });
           console.log('[Permit2 approve confirmed]');
