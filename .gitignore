@@ -1,11 +1,13 @@
 node_modules
 .env
-*.test
+.claude
 
 # Hardhat files
 /cache
 /artifacts
 /verify
+/test_local
+/py
 
 # TypeChain files
 /typechain

@@ -5,18 +5,21 @@ import { ConnectButton } from '@/components/ConnectButton';
 import { formatEther } from 'viem';
 import { useUserInfo } from '@/hooks/useUserInfo';
 import { useClaimable } from '@/hooks/useClaimable';
+import { useParticipationConfig } from '@/hooks/useParticipationConfig';
 import { LevelCard } from '@/components/LevelCard';
 import { UserInfoCard } from '@/components/UserInfoCard';
 import { ReferralCard } from '@/components/ReferralCard';
 import { RewardsCard } from '@/components/RewardsCard';
 import { StatsCard } from '@/components/StatsCard';
 import { useTranslation } from '@/lib/i18n';
+import { CONTRACTS } from '@/config/contracts';
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const { user, referrer, tokenBalance, nodeBalance, isLoading } = useUserInfo(address);
   const { miningReward, nodeReward, s2PlusReward, s3PlusReward, s6Reward } = useClaimable(address);
   const { t } = useTranslation();
+  const config = useParticipationConfig();
 
   if (!isConnected) {
     return (
@@ -67,7 +70,69 @@ export default function DashboardPage() {
 
       {!user?.isParticipant && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6">
-          <p className="text-yellow-300 text-sm">{t('dashboard.notDeposited')}</p>
+          <p className="text-yellow-300 text-sm font-medium mb-3">{t('dashboard.notParticipated')}</p>
+
+          {/* Step 1 */}
+          <div className="mb-3">
+            <p className="text-yellow-200 text-sm font-medium">{t('dashboard.step1Title')}</p>
+            <p className="text-yellow-200/80 text-sm mt-1 ml-3">{t('dashboard.step1Desc')}</p>
+            <ul className="text-yellow-200/80 text-sm mt-1 space-y-0.5 ml-3">
+              <li>• {t('dashboard.step1a')}</li>
+              <li>• {t('dashboard.step1b')}</li>
+            </ul>
+          </div>
+
+          {/* Step 2 */}
+          <div className="mb-3">
+            <p className="text-yellow-200 text-sm font-medium">{t('dashboard.step2Title')}</p>
+            <div className="text-yellow-200/80 text-sm mt-1 ml-3">
+              <span>{t('dashboard.step2Desc')}</span>
+              {config.minEthFormatted && config.maxEthFormatted && (
+                <span className="text-yellow-100"> (~{config.minEthFormatted}-{config.maxEthFormatted} ETH)</span>
+              )}
+            </div>
+            <p className="text-yellow-300/60 text-xs mt-1 ml-3">{t('dashboard.step2Note')}</p>
+          </div>
+
+          {/* Tip */}
+          <p className="text-yellow-300/70 text-sm mt-3 ml-3">💡 {t('dashboard.participationTip')}</p>
+
+          {/* Node holder quota info */}
+          {Number(nodeBalance) > 0 && (
+            <div className="mt-3 pt-3 border-t border-yellow-500/20">
+              <p className="text-yellow-300/80 text-sm">
+                📊 {t('dashboard.nodeHolding')}: <span className="text-yellow-100 font-medium">{Number(nodeBalance)}</span>
+              </p>
+              <p className="text-yellow-300/60 text-xs mt-1">
+                {t('dashboard.maxQuota')}: ${150 + Number(nodeBalance) * 300}
+                {config.ethPriceInUsd && (
+                  <span className="text-yellow-200/80"> (~{((150 + Number(nodeBalance) * 300) * 1e6 / Number(config.ethPriceInUsd) / 1e18).toFixed(4)} ETH)</span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* ETH price and contract address */}
+          <div className="mt-3 pt-3 border-t border-yellow-500/20 flex flex-wrap items-center justify-between gap-2">
+            {config.ethPriceFormatted && (
+              <p className="text-yellow-300/60 text-xs">
+                {t('dashboard.ethPrice')}: <span className="text-yellow-300/80">${config.ethPriceFormatted}</span>
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <p className="text-yellow-300/60 text-xs">{t('dashboard.depositContract')}:</p>
+              <code className="text-yellow-200/80 text-xs bg-yellow-500/10 px-1.5 py-0.5 rounded">
+                {CONTRACTS.ETIMMain.slice(0, 6)}...{CONTRACTS.ETIMMain.slice(-4)}
+              </code>
+              <button
+                onClick={() => navigator.clipboard.writeText(CONTRACTS.ETIMMain)}
+                className="text-yellow-400 hover:text-yellow-300 text-xs transition-colors"
+                title={t('dashboard.copyAddress')}
+              >
+                {t('dashboard.copy')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
