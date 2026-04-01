@@ -22,13 +22,17 @@ export function HeroSection() {
           <span className="text-indigo-300 text-sm">{t('hero.badge')}</span>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
+        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-4">
           <span className="bg-gradient-to-r from-white via-indigo-200 to-purple-200 bg-clip-text text-transparent">
             {t('hero.title')}
           </span>
         </h1>
 
-        <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-4">
+        <p className="text-base sm:text-lg text-indigo-300/80 font-medium mb-4">
+          {t('hero.tagline')}
+        </p>
+
+        <p className="text-lg sm:text-xl text-gray-400 max-w-3xl mx-auto mb-4">
           {t('hero.subtitle')}
         </p>
 
