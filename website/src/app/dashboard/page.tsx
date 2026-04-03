@@ -11,6 +11,7 @@ import { UserInfoCard } from '@/components/UserInfoCard';
 import { ReferralCard } from '@/components/ReferralCard';
 import { RewardsCard } from '@/components/RewardsCard';
 import { StatsCard } from '@/components/StatsCard';
+import { DepositCard } from '@/components/DepositCard';
 import { useTranslation } from '@/lib/i18n';
 import { CONTRACTS } from '@/config/contracts';
 
@@ -133,6 +134,18 @@ export default function DashboardPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {!user?.isParticipant && (
+        <div className="mb-6">
+          <DepositCard
+            minEth={config.minEth}
+            maxEth={config.maxEth}
+            minEthFormatted={config.minEthFormatted}
+            maxEthFormatted={config.maxEthFormatted}
+            ethPriceFormatted={config.ethPriceFormatted}
+          />
         </div>
       )}
 
