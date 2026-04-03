@@ -1,10 +1,12 @@
 'use client';
 
-import { TOKENOMICS, DEPOSIT_ALLOCATION, LEVEL_REQUIREMENTS } from '@/lib/constants';
+import { TOKENOMICS, DEPOSIT_ALLOCATION } from '@/lib/constants';
 import { useTranslation } from '@/lib/i18n';
+import { useLevelConditions } from '@/hooks/useLevelConditions';
 
 export function TokenomicsSection() {
   const { t } = useTranslation();
+  const levelRequirements = useLevelConditions();
 
   return (
     <section className="py-20">
@@ -63,7 +65,7 @@ export function TokenomicsSection() {
               </tr>
             </thead>
             <tbody>
-              {LEVEL_REQUIREMENTS.map((lvl, i) => (
+              {levelRequirements.map((lvl, i) => (
                 <tr key={lvl.level} className="border-b border-gray-700/50 hover:bg-gray-700/20">
                   <td className="py-3 px-4">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${

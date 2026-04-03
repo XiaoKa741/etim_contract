@@ -2,9 +2,11 @@
 
 import { CONTRACTS } from '@/config/contracts';
 import { useTranslation } from '@/lib/i18n';
+import { useLevelConditions } from '@/hooks/useLevelConditions';
 
 export default function WhitepaperPage() {
   const { t } = useTranslation();
+  const levelConditions = useLevelConditions();
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -59,7 +61,7 @@ export default function WhitepaperPage() {
           </p>
           <ul className="list-disc list-inside text-gray-300 space-y-2">
             <li>Base daily mining rate: 0.1% of principal USD value</li>
-            <li>Higher levels provide acceleration bonuses (up to +20% at S6)</li>
+            <li>Higher levels provide acceleration bonuses (up to +21% at S6)</li>
             <li>Mining continues until the claimed USD value equals the invested USD value</li>
             <li>Once the growth pool is depleted, Uniswap trading is unlocked</li>
           </ul>
@@ -88,13 +90,15 @@ export default function WhitepaperPage() {
                 </tr>
               </thead>
               <tbody className="text-gray-300">
-                <tr className="border-b border-gray-700/50"><td className="py-2">S0</td><td className="text-right">0</td><td className="text-right">0</td><td className="text-right">0</td><td className="text-right text-green-400">+3%</td></tr>
-                <tr className="border-b border-gray-700/50"><td className="py-2">S1</td><td className="text-right">5</td><td className="text-right">50K</td><td className="text-right">500K</td><td className="text-right text-green-400">+7%</td></tr>
-                <tr className="border-b border-gray-700/50"><td className="py-2">S2</td><td className="text-right">10</td><td className="text-right">100K</td><td className="text-right">3M</td><td className="text-right text-green-400">+10%</td></tr>
-                <tr className="border-b border-gray-700/50"><td className="py-2">S3</td><td className="text-right">15</td><td className="text-right">150K</td><td className="text-right">5M</td><td className="text-right text-green-400">+12%</td></tr>
-                <tr className="border-b border-gray-700/50"><td className="py-2">S4</td><td className="text-right">20</td><td className="text-right">200K</td><td className="text-right">7M</td><td className="text-right text-green-400">+15%</td></tr>
-                <tr className="border-b border-gray-700/50"><td className="py-2">S5</td><td className="text-right">25</td><td className="text-right">300K</td><td className="text-right">9M</td><td className="text-right text-green-400">+18%</td></tr>
-                <tr><td className="py-2">S6</td><td className="text-right">30</td><td className="text-right">400K</td><td className="text-right">11M</td><td className="text-right text-green-400">+20%</td></tr>
+                {levelConditions.map((lvl, i) => (
+                  <tr key={lvl.level} className={i < 6 ? 'border-b border-gray-700/50' : ''}>
+                    <td className="py-2">{lvl.level}</td>
+                    <td className="text-right">{lvl.referrals}</td>
+                    <td className="text-right">{lvl.personal}</td>
+                    <td className="text-right">{lvl.team}</td>
+                    <td className="text-right text-green-400">+{lvl.acceleration}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

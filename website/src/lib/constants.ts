@@ -12,12 +12,12 @@ export const LEVEL_COLORS: Record<number, string> = {
 
 export const LEVEL_REQUIREMENTS = [
   { level: 'S0', referrals: 0, personal: '0', team: '0', acceleration: '3%' },
-  { level: 'S1', referrals: 5, personal: '50,000', team: '500,000', acceleration: '7%' },
-  { level: 'S2', referrals: 10, personal: '100,000', team: '3,000,000', acceleration: '10%' },
-  { level: 'S3', referrals: 15, personal: '150,000', team: '5,000,000', acceleration: '12%' },
-  { level: 'S4', referrals: 20, personal: '200,000', team: '7,000,000', acceleration: '15%' },
-  { level: 'S5', referrals: 25, personal: '300,000', team: '9,000,000', acceleration: '18%' },
-  { level: 'S6', referrals: 30, personal: '400,000', team: '11,000,000', acceleration: '20%' },
+  { level: 'S1', referrals: 5, personal: '10,000', team: '100,000', acceleration: '7%' },
+  { level: 'S2', referrals: 10, personal: '20,000', team: '200,000', acceleration: '10%' },
+  { level: 'S3', referrals: 15, personal: '30,000', team: '400,000', acceleration: '12%' },
+  { level: 'S4', referrals: 20, personal: '40,000', team: '500,000', acceleration: '15%' },
+  { level: 'S5', referrals: 25, personal: '50,000', team: '600,000', acceleration: '18%' },
+  { level: 'S6', referrals: 30, personal: '60,000', team: '700,000', acceleration: '21%' },
 ];
 
 export const TOKENOMICS = [

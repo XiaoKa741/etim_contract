@@ -1,7 +1,8 @@
 'use client';
 
-import { LEVEL_NAMES, LEVEL_COLORS, LEVEL_REQUIREMENTS } from '@/lib/constants';
+import { LEVEL_NAMES, LEVEL_COLORS } from '@/lib/constants';
 import { useTranslation } from '@/lib/i18n';
+import { useLevelConditions } from '@/hooks/useLevelConditions';
 
 interface LevelCardProps {
   level: number;
@@ -12,9 +13,10 @@ interface LevelCardProps {
 
 export function LevelCard({ level, directReferrals, personalTokens, teamTokens }: LevelCardProps) {
   const { t } = useTranslation();
+  const levelConditions = useLevelConditions();
   const currentLevel = LEVEL_NAMES[level] ?? 'S0';
   const gradient = LEVEL_COLORS[level] ?? LEVEL_COLORS[0];
-  const nextLevel = level < 6 ? LEVEL_REQUIREMENTS[level + 1] : null;
+  const nextLevel = level < 6 ? levelConditions[level + 1] : null;
 
   return (
     <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
