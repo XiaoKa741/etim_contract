@@ -2,7 +2,7 @@
 
 import { useReadContract } from 'wagmi';
 import { CONTRACTS } from '@/config/contracts';
-import { ETIMMainABI } from '@/config/abis';
+import { ETIMMainABI, ETIMTaxHookABI } from '@/config/abis';
 
 export function useGlobalStats() {
   const { data: totalUsers } = useReadContract({
@@ -47,6 +47,12 @@ export function useGlobalStats() {
     functionName: 'totalActiveS6Players',
   });
 
+  const { data: s6RewardPool } = useReadContract({
+    address: CONTRACTS.ETIMTaxHook,
+    abi: ETIMTaxHookABI,
+    functionName: 'sellTaxToS6',
+  });
+
   return {
     totalUsers: totalUsers as bigint | undefined,
     totalDeposited: totalDeposited as bigint | undefined,
@@ -55,5 +61,6 @@ export function useGlobalStats() {
     isPoolDepleted: isPoolDepleted as boolean | undefined,
     s2PlusCount: s2PlusCount as bigint | undefined,
     s6Count: s6Count as bigint | undefined,
+    s6RewardPool: s6RewardPool as bigint | undefined,
   };
 }

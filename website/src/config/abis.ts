@@ -236,6 +236,16 @@ export const ETIMNodeABI = [
   },
 ] as const;
 
+export const ETIMTaxHookABI = [
+  {
+    name: 'sellTaxToS6',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
 // ERC20 ABI for token approvals and transfers
 export const ERC20ABI = [
   {
