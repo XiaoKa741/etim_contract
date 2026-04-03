@@ -35,7 +35,7 @@ export function useLevelConditions() {
     if (isSuccess && data) {
       const updated = data.map((result, i) => {
         if (result.status === 'success' && result.result) {
-          const [referrals, personal, team, acceleration] = result.result as [bigint, bigint, bigint, bigint];
+          const [referrals, personal, team, acceleration] = result.result as unknown as [bigint, bigint, bigint, bigint];
           return {
             level: `S${i}`,
             referrals: Number(referrals),
