@@ -4,10 +4,10 @@ require("dotenv").config();
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.28",
+    version: "0.8.26",
     settings: {
       viaIR: true,
-      evmVersion: "cancun",  // For PoolSwapTest
+      evmVersion: "cancun",
       optimizer: {
         enabled: true,
         runs: 200,
@@ -17,18 +17,19 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.MAINNET_RPC_URL,
+        url: process.env.BSC_RPC_URL || "https://bsc-dataseed1.binance.org",
         enabled: process.env.FORK === "true",
-        blockNumber: 24561657,
       },
-      hardfork: "cancun",  // For PoolSwapTest
-      initialBaseFeePerGas: 0, // 设置为0，这样就不会有基础费用了
+      hardfork: "cancun",
+      initialBaseFeePerGas: 0,
       blockGasLimit: 30000000,
       accounts: { count: 50 },
       loggingEnabled: true,
     },
-    sepolia: {
-      url: process.env.SEPOLIA_RPC_URL,
+    // BSC Testnet
+    bscTestnet: {
+      url: process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545",
+      chainId: 97,
       accounts: [
         process.env.PRIVATE_KEY,
         process.env.PRIVATE_KEY1,
@@ -37,27 +38,31 @@ module.exports = {
         process.env.PRIVATE_KEY4,
         process.env.PRIVATE_KEY5,
         process.env.PRIVATE_KEY6,
-        // 添加更多账户用于邀请（使用随机私钥也可以，因为我们会给它们转 ETH/ETIM）
-      ],
-      // 允许使用未配置的账户（通过 ethers.Wallet.createRandom）
+      ].filter(Boolean),
     },
-    megaeth: {
-      url: "https://carrot.megaeth.com/rpc",
-      chainId: 6343,
-      accounts: [process.env.PRIVATE_KEY, process.env.PRIVATE_KEY1],
+    // BSC Mainnet
+    bsc: {
+      url: process.env.BSC_RPC_URL || "https://bsc-dataseed1.binance.org",
+      chainId: 56,
+      accounts: [process.env.PRIVATE_KEY].filter(Boolean),
+      gasLimit: 6000000,
     },
-    // 以太坊主网配置
+    // Ethereum Mainnet (keep for reference)
     mainnet: {
       url: process.env.MAINNET_RPC_URL,
-      accounts: [process.env.PRIVATE_KEY],
+      accounts: [process.env.PRIVATE_KEY].filter(Boolean),
       gasLimit: 6000000,
     },
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY
+    apiKey: {
+      bsc: process.env.BSCSCAN_API_KEY || "",
+      bscTestnet: process.env.BSCSCAN_API_KEY || "",
+      mainnet: process.env.ETHERSCAN_API_KEY || "",
+    }
   },
   mocha: {
-    timeout: 120000, // 120秒，单位毫秒
+    timeout: 120000,
   },
   sourcify: {
     enabled: true

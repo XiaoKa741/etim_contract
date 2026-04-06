@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.26;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -139,8 +139,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     mapping(uint256 => uint256) public dailyEthEtimPrice;  // day => ETIM per ETH (18 decimals)
     mapping(uint256 => uint256) public dailyUsdEtimPrice;  // day => ETIM per USD (18 decimals)
 
-    uint256 public ethPriceInUsd  = 2000 * 10**6;   // 1 ETH = 2000 USD (6 decimals)
-    uint256 public ethPriceInEtim = 2000 * 10**18;  // 1 ETH = 2000 ETIM (18 decimals)
+    uint256 public ethPriceInUsd  = 600 * 10**6;    // 1 BNB = 600 USD (6 decimals)
+    uint256 public ethPriceInEtim = 600 * 10**18;   // 1 BNB = 600 ETIM (18 decimals)
     uint256 public etimPerUsd     = 1 * 10**18;     // 1 USD = 1 ETIM (18 decimals)
 
     uint256 public lastEthEtimPriceTime = 0;

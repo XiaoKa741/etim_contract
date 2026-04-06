@@ -1,0 +1,203 @@
+const { ethers } = require("hardhat");
+
+async function main() {
+    // await deploy();
+    // await addLiquidity();
+    // await updateDailyPrice();
+}
+
+async function deploy() {
+    // BSC Mainnet addresses
+    const VAULT_ADDRESS = "0x238a358808379702088667322f80aC48bAd5e6c4";
+    const CL_POOL_MANAGER_ADDRESS = "0xa0FfB9c1CE1Fe56963B0321B32E7A0302114058b";
+    const USDC_ADDRESS = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"; // BSC USDC
+    const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
+
+    const [deployer] = await ethers.getSigners();
+
+    const marketInfra    = { address: "0xa9489529b893c13fa923e45d4c6cb20c913361d4" };
+    const ecoFund        = { address: "0x63BFB46f71757C23ef4352096800D9b916225c10" };
+    const communityFund  = { address: "0x3ed13128637f879858cF226ab1ca245C2F8B8eE3" };
+    const airdrop        = { address: "0xE2f8245BddA6d8F1AB49d75dA6960F2cD1a3Bc13" };
+    const bnbFoundation  = { address: "0x9fc3dc011b461664c835f2527fffb1169b3c213e" };
+
+    console.log("部署者地址:", deployer.address);
+    console.log("部署者余额:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "BNB");
+
+    const network = await deployer.provider.getNetwork();
+    console.log("当前部署网络 ChainID:", network.chainId);
+
+    // ========== 部署ETIM代币合约 ==========
+    console.log("\n🆗. 部署ETIM代币合约...");
+    const ETIMToken = await ethers.getContractFactory("ETIMToken");
+    const etimToken = await ETIMToken.deploy("ETIM Token", "ETIM");
+    await etimToken.waitForDeployment();
+    const etimTokenAddress = await etimToken.getAddress();
+    console.log("ETIM代币合约地址:", etimTokenAddress);
+
+    // ========== 部署节点NFT合约 ==========
+    console.log("\n🆗. 部署节点NFT合约...");
+    const ETIMNode = await ethers.getContractFactory("ETIMNode");
+    const etimNode = await ETIMNode.deploy();
+    await etimNode.waitForDeployment();
+    const etimNodeAddress = await etimNode.getAddress();
+    console.log("节点合约地址:", etimNodeAddress);
+
+    // ========== 部署税收HOOK合约 ==========
+    // PancakeSwap V4 不需要 CREATE2 salt mining，直接部署
+    console.log("\n🆗. 部署税收HOOK合约...");
+    const ETIMTaxHook = await ethers.getContractFactory("ETIMTaxHook");
+    const etimHook = await ETIMTaxHook.deploy(
+        CL_POOL_MANAGER_ADDRESS,
+        deployer.address,
+        300,  // 3% buy tax
+        300   // 3% sell tax
+    );
+    await etimHook.waitForDeployment();
+    const hookAddress = await etimHook.getAddress();
+    console.log("税收HOOK合约:", hookAddress);
+
+    // ========== 部署BNB/ETIM代币池合约 ==========
+    console.log("\n🆗. 部署BNB/ETIM代币池合约...");
+    const ETIMPool = await ethers.getContractFactory("ETIMPoolHelper");
+    const etimPool = await ETIMPool.deploy(
+        VAULT_ADDRESS,
+        CL_POOL_MANAGER_ADDRESS,
+        etimTokenAddress,
+        USDC_ADDRESS,
+        hookAddress,
+        CHAINLINK_BNB_USD,
+    );
+    await etimPool.waitForDeployment();
+    const etimPoolAddress = await etimPool.getAddress();
+    console.log("池子HELPER合约地址:", etimPoolAddress);
+
+    // ========== 部署主合约 ==========
+    console.log("\n🆗. 部署ETIM主合约...");
+    const ETIMMain = await ethers.getContractFactory("ETIMMain");
+    const etimMain = await ETIMMain.deploy(
+        etimTokenAddress,
+        etimNodeAddress,
+        etimPoolAddress,
+        hookAddress,
+    );
+    await etimMain.waitForDeployment();
+    const etimMainAddress = await etimMain.getAddress();
+    console.log("主合约地址:", etimMainAddress);
+
+    // ========== 分配代币（总量 100,000,000 ETIM）==========
+    console.log("\n🆗. 分配代币...");
+    let tx;
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("87900000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(marketInfra.address, ethers.parseEther("5000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(ecoFund.address, ethers.parseEther("1000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(communityFund.address, ethers.parseEther("1000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(airdrop.address, ethers.parseEther("5000000"));
+    await tx.wait();
+    tx = await etimToken.connect(deployer).transfer(bnbFoundation.address, ethers.parseEther("100000"));
+    await tx.wait();
+
+    console.log("代币分配 growthPool(Main):", ethers.formatEther(await etimToken.balanceOf(etimMainAddress)), "ETIM");
+    console.log("代币分配 marketInfra     :", ethers.formatEther(await etimToken.balanceOf(marketInfra.address)), "ETIM");
+    console.log("代币分配 ecoFund         :", ethers.formatEther(await etimToken.balanceOf(ecoFund.address)), "ETIM");
+    console.log("代币分配 communityFund   :", ethers.formatEther(await etimToken.balanceOf(communityFund.address)), "ETIM");
+    console.log("代币分配 airdrop         :", ethers.formatEther(await etimToken.balanceOf(airdrop.address)), "ETIM");
+    console.log("代币分配 bnbFoundation   :", ethers.formatEther(await etimToken.balanceOf(bnbFoundation.address)), "ETIM");
+
+    // ========== 设置合约间依赖关系 ==========
+    console.log("\n🆗. 设置合约间依赖关系...");
+
+    tx = await etimToken.setMainContract(etimMainAddress);
+    await tx.wait();
+    console.log("【代币合约】设置main合约");
+
+    tx = await etimPool.setMainContract(etimMainAddress);
+    await tx.wait();
+    console.log("【池子HELPER合约】设置main合约");
+
+    // 初始化池子价格: sqrtPriceX96 = sqrt(price) * 2^96
+    const sqrtBigInt = (n) => {
+        if (n === 0n) return 0n;
+        const bits = n.toString(2).length;
+        let x = 1n << BigInt(Math.ceil(bits / 2));
+        let prev;
+        do { prev = x; x = (x + n / x) / 2n; } while (x < prev);
+        return prev;
+    };
+    const Q96 = 2n ** 96n;
+    const priceEtimPerBnb = 500000n; // 1 BNB = 500000 ETIM
+    const sqrtPriceX96 = sqrtBigInt(priceEtimPerBnb * Q96 * Q96);
+    tx = await etimPool.initializePool(sqrtPriceX96);
+    await tx.wait();
+    console.log("【池子HELPER合约】初始化池子价格BNB/ETIM");
+    console.log("【池子HELPER合约】ETIM per BNB:", ethers.formatEther(await etimPool.getEtimPerEth()));
+    console.log("【池子HELPER合约】USDC per BNB:", ethers.formatUnits(await etimPool.getUsdcPerEth(), 6));
+    console.log("【池子HELPER合约】池子内BNB余量:", ethers.formatEther(await etimPool.getEthReserves()));
+
+    console.log("【池子HOOK合约】设置不收税白名单", etimPoolAddress);
+    tx = await etimHook.setExempt(etimPoolAddress, true);
+    await tx.wait();
+    console.log("【池子HOOK合约】设置Token合约", etimTokenAddress);
+    tx = await etimHook.setTokenContract(etimTokenAddress);
+    await tx.wait();
+    console.log("【池子HOOK合约】设置main合约", etimMainAddress);
+    tx = await etimHook.setMainContract(etimMainAddress);
+    await tx.wait();
+
+    // ========== 部署总结 ==========
+    console.log("\n" + "=".repeat(60));
+    console.log("BSC 部署完成！合约地址汇总:");
+    console.log("=".repeat(60));
+    console.log("ETIMToken      :", etimTokenAddress);
+    console.log("ETIMNode       :", etimNodeAddress);
+    console.log("ETIMTaxHook    :", hookAddress);
+    console.log("ETIMPoolHelper :", etimPoolAddress);
+    console.log("ETIMMain       :", etimMainAddress);
+    console.log("=".repeat(60));
+}
+
+async function addLiquidity() {
+    console.log("添加流动性 ETIM/BNB...");
+
+    const [deployer] = await ethers.getSigners();
+
+    const ETIMTokenAddress = ""; // 替换为实际地址
+    const ETIMPoolAddress = ""; // 替换为实际地址
+    const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
+    const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
+
+    let tx = await etimToken.connect(deployer).approve(ETIMPoolAddress, ethers.MaxInt256);
+    await tx.wait();
+
+    const bnbAmount = ethers.parseEther("0.1");
+    const etimAmount = ethers.parseEther("100");
+    tx = await etimPool.connect(deployer).addLiquidity(bnbAmount, etimAmount, { value: bnbAmount });
+    await tx.wait();
+
+    console.log("🆗流动性添加完成");
+}
+
+async function updateDailyPrice() {
+    console.log("更新每日价格...");
+
+    const [deployer] = await ethers.getSigners();
+
+    const ETIMMainAddress = ""; // 替换为实际地址
+    const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
+
+    let tx = await etimMain.connect(deployer).updateDailyPrice();
+    await tx.wait();
+
+    console.log("🆗每日价格更新完成");
+}
+
+main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+        console.error(error);
+        process.exit(1);
+    });

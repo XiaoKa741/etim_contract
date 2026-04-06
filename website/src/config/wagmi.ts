@@ -1,20 +1,19 @@
 'use client';
 
 import { createConfig, createStorage, http } from 'wagmi';
-import { mainnet } from 'wagmi/chains';
+import { bsc } from 'wagmi/chains';
 import { injected } from 'wagmi/connectors';
 
-// Free Ethereum RPC endpoints (no API key required)
-// publicnode is reliable and free
-const RPC_URL = 'https://ethereum.publicnode.com';
+// Free BSC RPC endpoints
+const RPC_URL = 'https://bsc-dataseed1.binance.org';
 
 export const config = createConfig({
-  chains: [mainnet],
+  chains: [bsc],
   connectors: [
     injected({ shimDisconnect: true }),
   ],
   transports: {
-    [mainnet.id]: http(RPC_URL),
+    [bsc.id]: http(RPC_URL),
   },
   ssr: true,
   // Poll every 2 seconds for transaction receipts
