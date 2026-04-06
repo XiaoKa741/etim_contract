@@ -579,10 +579,9 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     }
 
     // Determine and record referral relationship from bilateral transfers
+    // Supports both EOA and contract wallets (e.g. multisig, AA wallets)
     function _processReferralBinding(address from, address to, uint256 value) private {
         if (
-            !_isContract(from) &&
-            !_isContract(to)   &&
             from != address(0) &&
             to   != address(0) &&
             from != to         &&
@@ -665,7 +664,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // Update user level based on current stats (uses "small zone" team tokens)
     function _checkAndUpdateLevel(address user) private {
-        if (user == address(0) || _isContract(user)) return;
+        if (user == address(0)) return;
 
         UserInfo storage userInfo = users[user];
         if (userInfo.participationTime == 0) return;
@@ -716,8 +715,9 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     }
 
     // Reflect token transfer in team token balances (recursive up to maxTeamDepth)
+    // Supports both EOA and contract wallets
     function _updateTeamTokenBalance(address from, address to, uint256 amount) private {
-        if (from != address(0) && !_isContract(from)) {
+        if (from != address(0) && from != BURN_ADDRESS) {
             uint256 fromNewBalance = etimToken.balanceOf(from);
             uint256 fromOldBalance = fromNewBalance + amount;
             if (fromOldBalance != fromNewBalance) {
@@ -725,13 +725,12 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
                 if (referrerOf[from] != address(0)) {
                     _propagateTeamBalanceChange(from, delta);
                 } else {
-                    // No referrer yet — still update own branchTokenBalance for future binding
                     _applyBranchDelta(from, delta);
                 }
             }
         }
 
-        if (to != address(0) && !_isContract(to) && to != BURN_ADDRESS) {
+        if (to != address(0) && to != BURN_ADDRESS) {
             uint256 toNewBalance = etimToken.balanceOf(to);
             uint256 toOldBalance = toNewBalance >= amount ? toNewBalance - amount : 0;
             if (toOldBalance != toNewBalance) {
@@ -739,7 +738,6 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
                 if (referrerOf[to] != address(0)) {
                     _propagateTeamBalanceChange(to, delta);
                 } else {
-                    // No referrer yet — still update own branchTokenBalance for future binding
                     _applyBranchDelta(to, delta);
                 }
             }
@@ -1322,9 +1320,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     // =========================================================
 
     receive() external payable nonReentrant {
-        if (!_isContract(msg.sender)) {
-            _processParticipation(msg.sender, msg.value);
-        }
+        _processParticipation(msg.sender, msg.value);
     }
 
     // =========================================================

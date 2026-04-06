@@ -77,22 +77,23 @@ contract ETIMToken is ERC20, Ownable2Step {
         }
     }
 
-    // EOA <-> EOA, triggers full transfer callback (referral binding + team balance + level)
+    // Any address <-> Any address (except mint/burn), triggers full transfer callback
+    // Supports both EOA and contract wallets (e.g. multisig, AA wallets)
     function _shouldNotifyMain(address from, address to) private view returns (bool) {
         return mainContract != address(0)
             && from != address(0)
             && to   != address(0)
             && to   != BURN_ADDRESS
-            && !_isContract(from)
-            && !_isContract(to);
+            && from != mainContract
+            && to   != mainContract;
     }
 
-    // Contract <-> EOA or EOA -> BURN, triggers balance change callback (team balance + level)
+    // Transfers involving mainContract or burn, triggers balance change callback only
     function _shouldNotifyBalanceChange(address from, address to) private view returns (bool) {
         if (mainContract == address(0)) return false;
         if (from == address(0) || to == address(0)) return false;
-        bool fromIsContractLike = _isContract(from);
-        bool toIsContractLike   = _isContract(to) || to == BURN_ADDRESS;
-        return fromIsContractLike != toIsContractLike;
+        // If one side is mainContract or burn address, notify balance change (not full transfer)
+        if (from == mainContract || to == mainContract || to == BURN_ADDRESS) return true;
+        return false;
     }
 }
