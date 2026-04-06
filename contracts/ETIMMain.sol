@@ -80,6 +80,13 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     uint256 public potRewardEth;
     uint256 public officialRewardEth;
 
+    // Team depth & S0 acceleration
+    uint256 public maxTeamDepth       = 20;  // max recursion depth for team balance propagation (owner adjustable)
+    uint256 public s0AccelerationRate = 100; // S0 acceleration: direct referrals daily output * rate / 1000 (default 10%)
+
+    // Branch token balance: total tokens held by user + ALL their downstream (for big/small zone calc)
+    mapping(address => uint256) public branchTokenBalance;
+
     // LP+Burn rate-limited allocation
     uint256 public pendingLpEth       = 0;
     uint256 public pendingSwapBurnEth = 0;
@@ -221,7 +228,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // Initialize membership level conditions
     function _initializeLevelConditions() private {
-        levelConditions[0] = LevelCondition(0,  0,               0,                 3);
+        levelConditions[0] = LevelCondition(0,  0,               0,                 0); // S0 uses s0AccelerationRate instead
         levelConditions[1] = LevelCondition(5,  30000  * 10**18, 300000  * 10**18,  7);
         levelConditions[2] = LevelCondition(10, 50000  * 10**18, 1000000 * 10**18, 10);
         levelConditions[3] = LevelCondition(15, 100000 * 10**18, 2000000 * 10**18, 12);
@@ -335,15 +342,26 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         _checkAndUpdateLevel(msg.sender);
     }
 
-    // Manual sync team token balance
+    // Manual sync team token balance (recalculates full branch tree)
     function syncTeamBalance() external {
-        address[] memory referrals = referralsOfList[msg.sender];
-        uint256 total = 0;
-        for (uint256 i = 0; i < referrals.length; i++) {
-            total += etimToken.balanceOf(referrals[i]);
-        }
-        users[msg.sender].teamTokenBalance = total;
+        uint256 selfBalance = etimToken.balanceOf(msg.sender);
+        (uint256 totalTeam, uint256 totalBranch) = _recalcBranch(msg.sender, 0);
+        users[msg.sender].teamTokenBalance = totalTeam;
+        branchTokenBalance[msg.sender] = selfBalance + totalTeam;
         _checkAndUpdateLevel(msg.sender);
+    }
+
+    /// @notice Recursively recalculate team and branch balances
+    function _recalcBranch(address user, uint256 depth) private view returns (uint256 teamTotal, uint256 branchTotal) {
+        address[] memory refs = referralsOfList[user];
+        uint256 selfBal = etimToken.balanceOf(user);
+        branchTotal = selfBal;
+
+        for (uint256 i = 0; i < refs.length && depth < maxTeamDepth; i++) {
+            (, uint256 childBranch) = _recalcBranch(refs[i], depth + 1);
+            teamTotal += childBranch;
+            branchTotal += childBranch;
+        }
     }
 
     // Calculate claimable mining rewards (view)
@@ -398,7 +416,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         return valueInUsd * price / 10**6;
     }
 
-    // Calculate pending rewards aggregated by day
+    // Calculate pending rewards aggregated by day (with S0 / S1-S6 acceleration)
     function _calculatePendingRewards(address userAddr) private view returns (uint256 etimAmount, uint256 usdClaimed) {
         UserInfo storage user = users[userAddr];
 
@@ -411,13 +429,21 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         uint256 startDay = user.lastClaimTime / 1 days * 1 days;
         uint256 endDay   = block.timestamp    / 1 days * 1 days;
 
-        uint256 accelerationRate = levelConditions[user.level].accelerationRate;
         uint256 rewardInEtim     = 0;
         uint256 initialRemaining = remainingValueInUsd;
 
         for (uint256 t = startDay; t < endDay; t += 1 days) {
+            // Base daily output in USD
             uint256 dailyUsd = (user.investedValueInUsd * dailyMiningRate) / 1000;
-            dailyUsd += (dailyUsd * accelerationRate) / 100;
+
+            // Acceleration: calculate bonus ETIM from downstream, convert to USD equivalent
+            uint256 bonusEtim = _calculateAccelerationBonus(userAddr, user.level, t);
+            if (bonusEtim > 0) {
+                // Convert bonus ETIM to USD equivalent to add to dailyUsd for cap tracking
+                uint256 bonusUsd = _convertEtimToUsd(t, bonusEtim);
+                dailyUsd += bonusUsd;
+            }
+
             if (dailyUsd > remainingValueInUsd) dailyUsd = remainingValueInUsd;
 
             rewardInEtim        += _convertUsdToEtim(t, dailyUsd);
@@ -428,6 +454,79 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         usdClaimed = initialRemaining - remainingValueInUsd;
         return (rewardInEtim, usdClaimed);
+    }
+
+    /// @notice Calculate acceleration bonus ETIM for a user on a given day
+    /// S0: direct referrals' daily ETIM output * s0AccelerationRate / 1000
+    /// S1-S6: small zone downstream daily ETIM output * accelerationRate / 100
+    function _calculateAccelerationBonus(address userAddr, uint8 level, uint256 day) private view returns (uint256 bonusEtim) {
+        if (level == 0) {
+            // S0: bonus from direct referrals' daily output
+            if (s0AccelerationRate == 0) return 0;
+            uint256 totalDirectDailyEtim = _getDirectReferralsDailyEtim(userAddr, day);
+            bonusEtim = (totalDirectDailyEtim * s0AccelerationRate) / 1000;
+        } else {
+            // S1-S6: bonus from small zone downstream daily output
+            uint256 accelerationRate = levelConditions[level].accelerationRate;
+            if (accelerationRate == 0) return 0;
+            uint256 smallZoneDailyEtim = _getSmallZoneDailyEtim(userAddr, day);
+            bonusEtim = (smallZoneDailyEtim * accelerationRate) / 100;
+        }
+    }
+
+    /// @notice Sum of direct referrals' daily ETIM output (for S0 acceleration)
+    function _getDirectReferralsDailyEtim(address userAddr, uint256 day) private view returns (uint256 total) {
+        address[] memory directRefs = referralsOfList[userAddr];
+        for (uint256 i = 0; i < directRefs.length; i++) {
+            UserInfo storage ref = users[directRefs[i]];
+            if (ref.participationTime == 0) continue;
+            if (ref.claimedValueInUsd >= ref.investedValueInUsd) continue;
+            uint256 refDailyUsd = (ref.investedValueInUsd * dailyMiningRate) / 1000;
+            total += _convertUsdToEtim(day, refDailyUsd);
+        }
+    }
+
+    /// @notice Sum of "small zone" downstream daily ETIM output (for S1-S6 acceleration)
+    /// Small zone = total downstream output - biggest branch output
+    function _getSmallZoneDailyEtim(address userAddr, uint256 day) private view returns (uint256) {
+        address[] memory directRefs = referralsOfList[userAddr];
+        uint256 totalDailyEtim = 0;
+        uint256 maxBranchDailyEtim = 0;
+
+        for (uint256 i = 0; i < directRefs.length; i++) {
+            uint256 branchDaily = _getBranchDailyEtim(directRefs[i], day, 0);
+            totalDailyEtim += branchDaily;
+            if (branchDaily > maxBranchDailyEtim) {
+                maxBranchDailyEtim = branchDaily;
+            }
+        }
+
+        return totalDailyEtim >= maxBranchDailyEtim ? totalDailyEtim - maxBranchDailyEtim : 0;
+    }
+
+    /// @notice Recursively sum daily ETIM output of a user and all their downstream
+    function _getBranchDailyEtim(address userAddr, uint256 day, uint256 depth) private view returns (uint256 total) {
+        if (depth >= maxTeamDepth) return 0;
+
+        UserInfo storage user = users[userAddr];
+        if (user.participationTime > 0 && user.claimedValueInUsd < user.investedValueInUsd) {
+            uint256 dailyUsd = (user.investedValueInUsd * dailyMiningRate) / 1000;
+            total += _convertUsdToEtim(day, dailyUsd);
+        }
+
+        address[] memory refs = referralsOfList[userAddr];
+        for (uint256 i = 0; i < refs.length; i++) {
+            total += _getBranchDailyEtim(refs[i], day, depth + 1);
+        }
+    }
+
+    /// @notice Convert ETIM amount back to USD equivalent (6 decimals) using day price
+    function _convertEtimToUsd(uint256 timestamp, uint256 etimAmount) private view returns (uint256) {
+        uint256 day = timestamp / 1 days;
+        uint256 price = dailyUsdEtimPrice[day]; // ETIM per 1 USD (18 decimals)
+        if (price == 0) price = etimPerUsd;
+        if (price == 0) return 0;
+        return (etimAmount * 10**6) / price;
     }
 
     // Update cached ETH/ETIM price (throttled to once per 5 seconds)
@@ -536,7 +635,24 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
                     : (inviteeCurrentBalance >= value ? inviteeCurrentBalance - value : 0);
 
                 users[referrer].directReferralCount++;
-                users[referrer].teamTokenBalance += inviteePreBalance;
+
+                // Initialize invitee's branchTokenBalance if not yet set
+                if (branchTokenBalance[invitee] == 0 && inviteePreBalance > 0) {
+                    branchTokenBalance[invitee] = inviteePreBalance;
+                }
+                // Propagate the invitee's full branch (self + any existing downstream) up the referral chain
+                uint256 inviteeBranch = branchTokenBalance[invitee];
+                if (inviteeBranch > 0) {
+                    // Directly update referrer and ancestors (skip invitee's own branchTokenBalance since already set)
+                    address cur = invitee;
+                    for (uint256 d = 0; d < maxTeamDepth; d++) {
+                        address ref = referrerOf[cur];
+                        if (ref == address(0)) break;
+                        users[ref].teamTokenBalance += inviteeBranch;
+                        branchTokenBalance[ref] += inviteeBranch;
+                        cur = ref;
+                    }
+                }
 
                 emit ReferralAdded(referrer, invitee, block.timestamp);
 
@@ -547,7 +663,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         }
     }
 
-    // Update user level based on current stats
+    // Update user level based on current stats (uses "small zone" team tokens)
     function _checkAndUpdateLevel(address user) private {
         if (user == address(0) || _isContract(user)) return;
 
@@ -556,7 +672,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         uint256 personalTokens  = etimToken.balanceOf(user);
         uint256 directReferrals = userInfo.directReferralCount;
-        uint256 teamTokens      = userInfo.teamTokenBalance;
+        uint256 teamTokens      = _getSmallZoneTokens(user);
 
         uint8 newLevel = 0;
         for (uint8 lvl = 6; lvl >= 1; lvl--) {
@@ -581,37 +697,93 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         }
     }
 
-    // Reflect token transfer in referrer's team token balance
-    function _updateTeamTokenBalance(address from, address to, uint256 amount) private {
-        if (from != address(0) && !_isContract(from) && referrerOf[from] != address(0)) {
-            uint256 fromNewBalance = etimToken.balanceOf(from);
-            uint256 fromOldBalance = fromNewBalance + amount;
-            if (fromOldBalance != fromNewBalance) {
-                _propagateTeamBalanceChange(from, int256(fromNewBalance) - int256(fromOldBalance));
+    /// @notice Calculate "small zone" tokens = totalTeamTokens - largest direct referral branch
+    function _getSmallZoneTokens(address user) internal view returns (uint256) {
+        uint256 totalTeam = users[user].teamTokenBalance;
+        if (totalTeam == 0) return 0;
+
+        // Find the largest branch among direct referrals ("big zone")
+        address[] memory directRefs = referralsOfList[user];
+        uint256 maxBranch = 0;
+        for (uint256 i = 0; i < directRefs.length; i++) {
+            uint256 branch = branchTokenBalance[directRefs[i]];
+            if (branch > maxBranch) {
+                maxBranch = branch;
             }
         }
 
-        if (to != address(0) && !_isContract(to) && to != BURN_ADDRESS && referrerOf[to] != address(0)) {
+        return totalTeam >= maxBranch ? totalTeam - maxBranch : 0;
+    }
+
+    // Reflect token transfer in team token balances (recursive up to maxTeamDepth)
+    function _updateTeamTokenBalance(address from, address to, uint256 amount) private {
+        if (from != address(0) && !_isContract(from)) {
+            uint256 fromNewBalance = etimToken.balanceOf(from);
+            uint256 fromOldBalance = fromNewBalance + amount;
+            if (fromOldBalance != fromNewBalance) {
+                int256 delta = int256(fromNewBalance) - int256(fromOldBalance);
+                if (referrerOf[from] != address(0)) {
+                    _propagateTeamBalanceChange(from, delta);
+                } else {
+                    // No referrer yet — still update own branchTokenBalance for future binding
+                    _applyBranchDelta(from, delta);
+                }
+            }
+        }
+
+        if (to != address(0) && !_isContract(to) && to != BURN_ADDRESS) {
             uint256 toNewBalance = etimToken.balanceOf(to);
             uint256 toOldBalance = toNewBalance >= amount ? toNewBalance - amount : 0;
             if (toOldBalance != toNewBalance) {
-                _propagateTeamBalanceChange(to, int256(toNewBalance) - int256(toOldBalance));
+                int256 delta = int256(toNewBalance) - int256(toOldBalance);
+                if (referrerOf[to] != address(0)) {
+                    _propagateTeamBalanceChange(to, delta);
+                } else {
+                    // No referrer yet — still update own branchTokenBalance for future binding
+                    _applyBranchDelta(to, delta);
+                }
             }
         }
     }
 
-    // Propagate team balance change to direct referrer
+    // Propagate team balance change up to maxTeamDepth ancestors
+    // Also updates branchTokenBalance for big/small zone calculation
     function _propagateTeamBalanceChange(address user, int256 delta) private {
         if (delta == 0) return;
-        address referrer = referrerOf[user];
-        if (referrer == address(0)) return;
 
+        // Update the user's own branchTokenBalance (self + all downstream)
+        _applyBranchDelta(user, delta);
+
+        // Propagate up the referral chain
+        address current = user;
+        for (uint256 depth = 0; depth < maxTeamDepth; depth++) {
+            address referrer = referrerOf[current];
+            if (referrer == address(0)) break;
+
+            // Update referrer's teamTokenBalance (total of ALL downstream)
+            if (delta > 0) {
+                users[referrer].teamTokenBalance += uint256(delta);
+            } else {
+                uint256 absDelta = uint256(-delta);
+                users[referrer].teamTokenBalance = users[referrer].teamTokenBalance >= absDelta
+                    ? users[referrer].teamTokenBalance - absDelta
+                    : 0;
+            }
+
+            // Update referrer's branchTokenBalance (self + all downstream)
+            _applyBranchDelta(referrer, delta);
+
+            current = referrer;
+        }
+    }
+
+    function _applyBranchDelta(address user, int256 delta) private {
         if (delta > 0) {
-            users[referrer].teamTokenBalance += uint256(delta);
+            branchTokenBalance[user] += uint256(delta);
         } else {
             uint256 absDelta = uint256(-delta);
-            users[referrer].teamTokenBalance = users[referrer].teamTokenBalance >= absDelta
-                ? users[referrer].teamTokenBalance - absDelta
+            branchTokenBalance[user] = branchTokenBalance[user] >= absDelta
+                ? branchTokenBalance[user] - absDelta
                 : 0;
         }
     }
@@ -1057,6 +1229,15 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     function setDailyMiningRate(uint256 rate) external onlyOwner {
         dailyMiningRate = rate;
+    }
+
+    function setMaxTeamDepth(uint256 depth) external onlyOwner {
+        if (depth == 0) revert InvalidParams();
+        maxTeamDepth = depth;
+    }
+
+    function setS0AccelerationRate(uint256 rate) external onlyOwner {
+        s0AccelerationRate = rate;
     }
 
     function setDailyDepositRate(uint256 rate) external onlyOwner {
