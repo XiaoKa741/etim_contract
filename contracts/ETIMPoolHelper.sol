@@ -26,6 +26,8 @@ interface AggregatorV3Interface {
     );
 }
 
+/// @notice ETIM Pool Helper — manages WETH/ETIM pool on PancakeSwap V4 (BSC)
+/// Uses ERC-20 WETH (bridged ETH on BSC: 0x2170Ed0880ac9A755fd29B2688956BD959F933F8)
 contract ETIMPoolHelper is ILockCallback {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
@@ -44,9 +46,10 @@ contract ETIMPoolHelper is ILockCallback {
 
     IVault                public immutable vault;
     ICLPoolManager        public immutable poolManager;
+    IERC20                public immutable weth;       // BSC bridged ETH (ERC-20)
     IERC20                public immutable etim;
     IERC20                public immutable usdc;
-    AggregatorV3Interface public immutable bnbUsdFeed;
+    AggregatorV3Interface public immutable ethUsdFeed;  // Chainlink ETH/USD on BSC
 
     // =========================================================
     //                        STORAGE
@@ -56,11 +59,11 @@ contract ETIMPoolHelper is ILockCallback {
     address public owner;
     address public pendingOwner;
 
-    PoolKey public etimBnbPoolKey;
-    PoolKey public usdcBnbPoolKey;
+    PoolKey public etimEthPoolKey;   // WETH / ETIM pool
+    PoolKey public usdcEthPoolKey;   // USDC / WETH pool (for price fallback)
 
-    PoolId public etimBnbPoolId;
-    PoolId public usdcBnbPoolId;
+    PoolId public etimEthPoolId;
+    PoolId public usdcEthPoolId;
 
     // =========================================================
     //                     CALLBACK TYPES
@@ -78,7 +81,7 @@ contract ETIMPoolHelper is ILockCallback {
         ActionType actionType;
         address    sender;
         address    to;
-        uint256    ethAmount;    // BNB/ETH amount (native)
+        uint256    ethAmount;    // WETH amount (ERC-20)
         uint256    etimAmount;
         int24      tickLower;
         int24      tickUpper;
@@ -94,7 +97,6 @@ contract ETIMPoolHelper is ILockCallback {
     error OnlyVault();
     error ZeroAddress();
     error InsufficientETH();
-    error ETHTransferFailed();
     error PoolNotInitialized();
 
     // =========================================================
@@ -131,33 +133,36 @@ contract ETIMPoolHelper is ILockCallback {
     constructor(
         address _vault,
         address _poolManager,
+        address _weth,
         address _etim,
         address _usdc,
         address _hook,
-        address _bnbUsdFeed
+        address _ethUsdFeed
     ) {
         if (_vault       == address(0)) revert ZeroAddress();
         if (_poolManager == address(0)) revert ZeroAddress();
+        if (_weth        == address(0)) revert ZeroAddress();
         if (_etim        == address(0)) revert ZeroAddress();
         if (_usdc        == address(0)) revert ZeroAddress();
-        if (_bnbUsdFeed  == address(0)) revert ZeroAddress();
+        if (_ethUsdFeed  == address(0)) revert ZeroAddress();
 
         vault       = IVault(_vault);
         poolManager = ICLPoolManager(_poolManager);
+        weth        = IERC20(_weth);
         etim        = IERC20(_etim);
         usdc        = IERC20(_usdc);
-        bnbUsdFeed  = AggregatorV3Interface(_bnbUsdFeed);
+        ethUsdFeed  = AggregatorV3Interface(_ethUsdFeed);
         owner       = msg.sender;
 
         int24 tickSpacing60 = 60;
         int24 tickSpacing10 = 10;
 
-        // ETIM / Native BNB pool (fee 3000, tickSpacing 60)
+        // WETH / ETIM pool (fee 3000, tickSpacing 60)
         {
-            Currency c0 = Currency.wrap(address(0)); // native BNB
+            Currency c0 = Currency.wrap(_weth);
             Currency c1 = Currency.wrap(_etim);
             if (c0 > c1) (c0, c1) = (c1, c0);
-            etimBnbPoolKey = PoolKey({
+            etimEthPoolKey = PoolKey({
                 currency0:   c0,
                 currency1:   c1,
                 hooks:       IHooks(_hook),
@@ -165,15 +170,15 @@ contract ETIMPoolHelper is ILockCallback {
                 fee:         3000,
                 parameters:  bytes32(0).setTickSpacing(tickSpacing60)
             });
-            etimBnbPoolId = etimBnbPoolKey.toId();
+            etimEthPoolId = etimEthPoolKey.toId();
         }
 
-        // USDC / Native BNB pool (fee 500, tickSpacing 10)
+        // USDC / WETH pool (fee 500, tickSpacing 10) — for price fallback
         {
-            Currency c0 = Currency.wrap(address(0));
+            Currency c0 = Currency.wrap(_weth);
             Currency c1 = Currency.wrap(_usdc);
             if (c0 > c1) (c0, c1) = (c1, c0);
-            usdcBnbPoolKey = PoolKey({
+            usdcEthPoolKey = PoolKey({
                 currency0:   c0,
                 currency1:   c1,
                 hooks:       IHooks(address(0)),
@@ -181,7 +186,7 @@ contract ETIMPoolHelper is ILockCallback {
                 fee:         500,
                 parameters:  bytes32(0).setTickSpacing(tickSpacing10)
             });
-            usdcBnbPoolId = usdcBnbPoolKey.toId();
+            usdcEthPoolId = usdcEthPoolKey.toId();
         }
     }
 
@@ -189,40 +194,40 @@ contract ETIMPoolHelper is ILockCallback {
     //                    VIEW FUNCTIONS
     // =========================================================
 
-    /// @notice Returns the virtual ETH/BNB reserve of the ETIM/BNB pool
+    /// @notice Returns the virtual WETH reserve of the ETIM/WETH pool
     function getEthReserves() external view returns (uint256 ethReserves) {
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimBnbPoolId);
-        uint128 liquidity = poolManager.getLiquidity(etimBnbPoolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimEthPoolId);
+        uint128 liquidity = poolManager.getLiquidity(etimEthPoolId);
         if (liquidity == 0 || sqrtPriceX96 == 0) return 0;
         ethReserves = FullMath.mulDiv(liquidity, 2 ** 96, sqrtPriceX96);
     }
 
-    /// @notice Returns the amount of ETIM obtainable for 1 ETH/BNB
+    /// @notice Returns the amount of ETIM obtainable for 1 WETH
     function getEtimPerEth() external view returns (uint256 etimAmount) {
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimBnbPoolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimEthPoolId);
         if (sqrtPriceX96 == 0) return 0;
         uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
         etimAmount = FullMath.mulDiv(priceX192, 1e18, 2 ** 192);
     }
 
-    /// @notice Returns the USDC price per 1 ETH/BNB — Chainlink primary, pool fallback
+    /// @notice Returns the USDC price per 1 WETH — Chainlink primary, pool fallback
     function getUsdcPerEth() external view returns (uint256 usdcAmount) {
         usdcAmount = getUsdcPerEthChainlink();
         if (usdcAmount == 0) usdcAmount = getUsdcPerEthPool();
     }
 
-    /// @notice Returns the USDC price per 1 BNB via Chainlink BNB/USD feed
+    /// @notice Returns the USDC price per 1 ETH via Chainlink ETH/USD feed
     function getUsdcPerEthChainlink() public view returns (uint256 usdcAmount) {
-        (, int256 answer,, uint256 updatedAt,) = bnbUsdFeed.latestRoundData();
+        (, int256 answer,, uint256 updatedAt,) = ethUsdFeed.latestRoundData();
         if (answer <= 0) return 0;
         if (block.timestamp - updatedAt > 2 hours) return 0;
-        // Chainlink BNB/USD is 8 decimals → scale to 6 decimals (USDC)
+        // Chainlink ETH/USD is 8 decimals → scale to 6 decimals (USDC)
         usdcAmount = uint256(answer) / 10 ** 2;
     }
 
-    /// @notice Returns the USDC price per 1 BNB via pool spot price
+    /// @notice Returns the USDC price per 1 WETH via pool spot price
     function getUsdcPerEthPool() public view returns (uint256 usdcAmount) {
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(usdcBnbPoolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(usdcEthPoolId);
         if (sqrtPriceX96 == 0) return 0;
         uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
         usdcAmount = FullMath.mulDiv(priceX192, 10 ** 18, 2 ** 192);
@@ -232,13 +237,9 @@ contract ETIMPoolHelper is ILockCallback {
     //               EXTERNAL MUTATING FUNCTIONS
     // =========================================================
 
-    /// @notice Directly add liquidity (both BNB and ETIM)
-    function addLiquidity(uint256 ethAmount, uint256 etimAmount)
-        external
-        payable
-        onlyOwner
-    {
-        if (msg.value < ethAmount) revert InsufficientETH();
+    /// @notice Directly add liquidity (both WETH and ETIM)
+    function addLiquidity(uint256 ethAmount, uint256 etimAmount) external onlyOwner {
+        weth.safeTransferFrom(msg.sender, address(this), ethAmount);
         etim.safeTransferFrom(msg.sender, address(this), etimAmount);
         (int24 tickLower, int24 tickUpper) = _getTickRange();
 
@@ -253,14 +254,13 @@ contract ETIMPoolHelper is ILockCallback {
         })));
     }
 
-    /// @notice Swap ETH/BNB for ETIM
+    /// @notice Swap WETH for ETIM; ETIM is sent directly to the caller
     function swapEthToEtim(uint256 ethAmount)
         external
-        payable
         onlyMainContract
         returns (uint256 etimOut)
     {
-        if (msg.value < ethAmount) revert InsufficientETH();
+        weth.safeTransferFrom(msg.sender, address(this), ethAmount);
         (int24 tickLower, int24 tickUpper) = _getTickRange();
 
         bytes memory result = vault.lock(abi.encode(CallbackData({
@@ -277,7 +277,7 @@ contract ETIMPoolHelper is ILockCallback {
         emit SwappedEthToEtim(ethAmount, etimOut);
     }
 
-    /// @notice Swap ETIM for ETH/BNB
+    /// @notice Swap ETIM for WETH; WETH is sent to the specified address
     function swapEtimToEth(uint256 etimAmount, address to)
         external
         onlyMainContract
@@ -301,13 +301,9 @@ contract ETIMPoolHelper is ILockCallback {
         emit SwappedEtimToEth(etimAmount, ethOut);
     }
 
-    /// @notice Use ETH/BNB to swap for ETIM, then add both as liquidity
-    function swapAndAddLiquidity(uint256 ethAmount)
-        external
-        payable
-        onlyMainContract
-    {
-        if (msg.value < ethAmount) revert InsufficientETH();
+    /// @notice Use WETH to swap for ETIM, then add both as liquidity
+    function swapAndAddLiquidity(uint256 ethAmount) external onlyMainContract {
+        weth.safeTransferFrom(msg.sender, address(this), ethAmount);
         (int24 tickLower, int24 tickUpper) = _getTickRange();
 
         vault.lock(abi.encode(CallbackData({
@@ -321,13 +317,9 @@ contract ETIMPoolHelper is ILockCallback {
         })));
     }
 
-    /// @notice Swap ETH/BNB for ETIM and burn
-    function swapAndBurn(uint256 ethAmount)
-        external
-        payable
-        onlyMainContract
-    {
-        if (msg.value < ethAmount) revert InsufficientETH();
+    /// @notice Swap WETH for ETIM and burn
+    function swapAndBurn(uint256 ethAmount) external onlyMainContract {
+        weth.safeTransferFrom(msg.sender, address(this), ethAmount);
 
         vault.lock(abi.encode(CallbackData({
             actionType: ActionType.SWAP_AND_BURN,
@@ -371,7 +363,7 @@ contract ETIMPoolHelper is ILockCallback {
     // =========================================================
 
     function _handleAddLiquidity(CallbackData memory data) internal returns (bytes memory) {
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimBnbPoolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimEthPoolId);
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
@@ -382,7 +374,7 @@ contract ETIMPoolHelper is ILockCallback {
         );
 
         (BalanceDelta delta,) = poolManager.modifyLiquidity(
-            etimBnbPoolKey,
+            etimEthPoolKey,
             ICLPoolManager.ModifyLiquidityParams({
                 tickLower:      data.tickLower,
                 tickUpper:      data.tickUpper,
@@ -400,9 +392,9 @@ contract ETIMPoolHelper is ILockCallback {
 
     function _handleSwap(CallbackData memory data) internal returns (bytes memory) {
         if (data.ethAmount > 0) {
-            // ETH/BNB → ETIM
+            // WETH → ETIM
             BalanceDelta delta = poolManager.swap(
-                etimBnbPoolKey,
+                etimEthPoolKey,
                 ICLPoolManager.SwapParams({
                     zeroForOne:        true,
                     amountSpecified:   -int256(data.ethAmount),
@@ -412,20 +404,20 @@ contract ETIMPoolHelper is ILockCallback {
             );
 
             if (delta.amount0() < 0) {
-                _settleNative(uint256(-int256(delta.amount0())));
+                _settleWeth(uint256(-int256(delta.amount0())));
             }
 
             uint256 etimOut = 0;
             if (delta.amount1() > 0) {
                 etimOut = uint256(int256(delta.amount1()));
-                vault.take(etimBnbPoolKey.currency1, data.to, etimOut);
+                vault.take(etimEthPoolKey.currency1, data.to, etimOut);
             }
 
             return abi.encode(etimOut);
         } else {
-            // ETIM → ETH/BNB
+            // ETIM → WETH
             BalanceDelta delta = poolManager.swap(
-                etimBnbPoolKey,
+                etimEthPoolKey,
                 ICLPoolManager.SwapParams({
                     zeroForOne:        false,
                     amountSpecified:   -int256(data.etimAmount),
@@ -437,7 +429,7 @@ contract ETIMPoolHelper is ILockCallback {
             uint256 ethOut = 0;
             if (delta.amount0() > 0) {
                 ethOut = uint256(int256(delta.amount0()));
-                vault.take(etimBnbPoolKey.currency0, data.to, ethOut);
+                vault.take(etimEthPoolKey.currency0, data.to, ethOut);
             }
 
             if (delta.amount1() < 0) {
@@ -452,9 +444,9 @@ contract ETIMPoolHelper is ILockCallback {
         uint256 swapEth      = data.ethAmount / 2;
         uint256 liquidityEth = data.ethAmount - swapEth;
 
-        // 1. ETH/BNB → ETIM
+        // 1. WETH → ETIM
         BalanceDelta swapDelta = poolManager.swap(
-            etimBnbPoolKey,
+            etimEthPoolKey,
             ICLPoolManager.SwapParams({
                 zeroForOne:        true,
                 amountSpecified:   -int256(swapEth),
@@ -464,17 +456,17 @@ contract ETIMPoolHelper is ILockCallback {
         );
 
         if (swapDelta.amount0() < 0) {
-            _settleNative(uint256(-int256(swapDelta.amount0())));
+            _settleWeth(uint256(-int256(swapDelta.amount0())));
         }
 
         uint256 etimReceived = 0;
         if (swapDelta.amount1() > 0) {
             etimReceived = uint256(int256(swapDelta.amount1()));
-            vault.take(etimBnbPoolKey.currency1, address(this), etimReceived);
+            vault.take(etimEthPoolKey.currency1, address(this), etimReceived);
         }
 
         // 2. Add liquidity
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimBnbPoolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimEthPoolId);
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
@@ -485,7 +477,7 @@ contract ETIMPoolHelper is ILockCallback {
         );
 
         (BalanceDelta liqDelta,) = poolManager.modifyLiquidity(
-            etimBnbPoolKey,
+            etimEthPoolKey,
             ICLPoolManager.ModifyLiquidityParams({
                 tickLower:      data.tickLower,
                 tickUpper:      data.tickUpper,
@@ -503,7 +495,7 @@ contract ETIMPoolHelper is ILockCallback {
 
     function _handleSwapAndBurn(CallbackData memory data) internal returns (bytes memory) {
         BalanceDelta delta = poolManager.swap(
-            etimBnbPoolKey,
+            etimEthPoolKey,
             ICLPoolManager.SwapParams({
                 zeroForOne:        true,
                 amountSpecified:   -int256(data.ethAmount),
@@ -513,13 +505,13 @@ contract ETIMPoolHelper is ILockCallback {
         );
 
         if (delta.amount0() < 0) {
-            _settleNative(uint256(-int256(delta.amount0())));
+            _settleWeth(uint256(-int256(delta.amount0())));
         }
 
         uint256 etimBurned = 0;
         if (delta.amount1() > 0) {
             etimBurned = uint256(int256(delta.amount1()));
-            vault.take(etimBnbPoolKey.currency1, BURN_ADDRESS, etimBurned);
+            vault.take(etimEthPoolKey.currency1, BURN_ADDRESS, etimBurned);
         }
 
         emit SwappedAndBurned(data.ethAmount, etimBurned);
@@ -530,7 +522,7 @@ contract ETIMPoolHelper is ILockCallback {
         (int24 tickLower, int24 tickUpper) = _getTickRange();
 
         (BalanceDelta delta,) = poolManager.modifyLiquidity(
-            etimBnbPoolKey,
+            etimEthPoolKey,
             ICLPoolManager.ModifyLiquidityParams({
                 tickLower:      tickLower,
                 tickUpper:      tickUpper,
@@ -543,8 +535,8 @@ contract ETIMPoolHelper is ILockCallback {
         uint256 fee0 = delta.amount0() > 0 ? uint256(int256(delta.amount0())) : 0;
         uint256 fee1 = delta.amount1() > 0 ? uint256(int256(delta.amount1())) : 0;
 
-        if (fee0 > 0) vault.take(etimBnbPoolKey.currency0, address(this), fee0);
-        if (fee1 > 0) vault.take(etimBnbPoolKey.currency1, address(this), fee1);
+        if (fee0 > 0) vault.take(etimEthPoolKey.currency0, address(this), fee0);
+        if (fee1 > 0) vault.take(etimEthPoolKey.currency1, address(this), fee1);
 
         emit FeesCollected(fee0, fee1);
         return "";
@@ -555,20 +547,22 @@ contract ETIMPoolHelper is ILockCallback {
     // =========================================================
 
     function _settleDelta(BalanceDelta delta) internal {
-        if (delta.amount0() < 0) _settleNative(uint256(-int256(delta.amount0())));
+        if (delta.amount0() < 0) _settleWeth(uint256(-int256(delta.amount0())));
         if (delta.amount1() < 0) _settleEtim(uint256(-int256(delta.amount1())));
-        if (delta.amount0() > 0) vault.take(etimBnbPoolKey.currency0, address(this), uint256(int256(delta.amount0())));
-        if (delta.amount1() > 0) vault.take(etimBnbPoolKey.currency1, address(this), uint256(int256(delta.amount1())));
+        if (delta.amount0() > 0) vault.take(etimEthPoolKey.currency0, address(this), uint256(int256(delta.amount0())));
+        if (delta.amount1() > 0) vault.take(etimEthPoolKey.currency1, address(this), uint256(int256(delta.amount1())));
     }
 
-    /// @dev Settle native BNB/ETH to Vault
-    function _settleNative(uint256 amount) internal {
-        vault.settle{value: amount}();
+    /// @dev Settle WETH (ERC-20) to Vault: sync → transfer → settle
+    function _settleWeth(uint256 amount) internal {
+        vault.sync(etimEthPoolKey.currency0);
+        weth.safeTransfer(address(vault), amount);
+        vault.settle();
     }
 
-    /// @dev Settle ETIM to Vault (sync → transfer → settle)
+    /// @dev Settle ETIM to Vault: sync → transfer → settle
     function _settleEtim(uint256 amount) internal {
-        vault.sync(etimBnbPoolKey.currency1);
+        vault.sync(etimEthPoolKey.currency1);
         etim.safeTransfer(address(vault), amount);
         vault.settle();
     }
@@ -578,10 +572,10 @@ contract ETIMPoolHelper is ILockCallback {
     // =========================================================
 
     function _getTickRange() internal view returns (int24 tickLower, int24 tickUpper) {
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimBnbPoolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimEthPoolId);
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
-        int24 spacing = int24(etimBnbPoolKey.parameters.getTickSpacing());
+        int24 spacing = int24(etimEthPoolKey.parameters.getTickSpacing());
         tickLower = (TickMath.MIN_TICK / spacing) * spacing;
         tickUpper = (TickMath.MAX_TICK / spacing) * spacing;
     }
@@ -597,8 +591,7 @@ contract ETIMPoolHelper is ILockCallback {
 
     function withdrawEth(uint256 amount, address to) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert ETHTransferFailed();
+        weth.safeTransfer(to, amount);
     }
 
     function collectFees() external onlyOwner {
@@ -620,7 +613,8 @@ contract ETIMPoolHelper is ILockCallback {
     }
 
     function initializePool(uint160 sqrtPriceX96) external onlyOwner {
-        poolManager.initialize(etimBnbPoolKey, sqrtPriceX96);
+        poolManager.initialize(etimEthPoolKey, sqrtPriceX96);
+        weth.approve(address(vault), type(uint256).max);
         etim.approve(address(vault), type(uint256).max);
     }
 
@@ -638,8 +632,4 @@ contract ETIMPoolHelper is ILockCallback {
         owner        = pendingOwner;
         pendingOwner = address(0);
     }
-
-    // =========================================================
-
-    receive() external payable {}
 }

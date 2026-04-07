@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { parseEther, formatEther } from 'viem';
-import { useWriteContract, useWaitForTransactionReceipt, useBalance, useAccount } from 'wagmi';
+import { parseEther, formatEther, erc20Abi } from 'viem';
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useReadContract } from 'wagmi';
 import { CONTRACTS } from '@/config/contracts';
 import { ETIMMainABI } from '@/config/abis';
 import { useTranslation } from '@/lib/i18n';
+
+// BSC bridged ETH (WETH) address
+const WETH_ADDRESS = '0x2170Ed0880ac9A755fd29B2688956BD959F933F8' as const;
 
 interface DepositCardProps {
   minEth: bigint | undefined;
@@ -19,9 +22,29 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
   const { t } = useTranslation();
   const { address } = useAccount();
   const [amount, setAmount] = useState('');
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
-  const { data: balance } = useBalance({ address });
+  const [step, setStep] = useState<'approve' | 'deposit'>('approve');
+
+  const { writeContract: writeApprove, data: approveHash, isPending: isApprovePending, error: approveError } = useWriteContract();
+  const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({ hash: approveHash });
+
+  const { writeContract: writeDeposit, data: depositHash, isPending: isDepositPending, error: depositError } = useWriteContract();
+  const { isLoading: isDepositConfirming, isSuccess: isDepositSuccess } = useWaitForTransactionReceipt({ hash: depositHash });
+
+  // Read WETH balance
+  const { data: wethBalance } = useReadContract({
+    address: WETH_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+  });
+
+  // Read WETH allowance
+  const { data: wethAllowance } = useReadContract({
+    address: WETH_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: address ? [address, CONTRACTS.ETIMMain] : undefined,
+  });
 
   const amountWei = (() => {
     try {
@@ -35,18 +58,34 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
   const isAmountValid = amountWei !== undefined && minEth !== undefined && maxEth !== undefined
     && amountWei >= minEth && amountWei <= maxEth;
 
-  const hasEnoughBalance = amountWei !== undefined && balance !== undefined
-    && balance.value >= amountWei;
+  const hasEnoughBalance = amountWei !== undefined && wethBalance !== undefined
+    && wethBalance >= amountWei;
 
-  const canDeposit = isAmountValid && hasEnoughBalance && !isPending && !isConfirming;
+  const needsApproval = amountWei !== undefined && wethAllowance !== undefined
+    && wethAllowance < amountWei;
+
+  const canApprove = isAmountValid && hasEnoughBalance && needsApproval && !isApprovePending && !isApproveConfirming;
+  const canDeposit = isAmountValid && hasEnoughBalance && !needsApproval && !isDepositPending && !isDepositConfirming;
+
+  const handleApprove = () => {
+    if (!amountWei) return;
+    setStep('approve');
+    writeApprove({
+      address: WETH_ADDRESS,
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [CONTRACTS.ETIMMain, amountWei],
+    });
+  };
 
   const handleDeposit = () => {
     if (!amountWei) return;
-    writeContract({
+    setStep('deposit');
+    writeDeposit({
       address: CONTRACTS.ETIMMain,
       abi: ETIMMainABI,
       functionName: 'deposit',
-      value: amountWei,
+      args: [amountWei],
     });
   };
 
@@ -58,11 +97,13 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
     if (maxEthFormatted) setAmount(maxEthFormatted);
   };
 
+  const error = approveError || depositError;
+
   return (
     <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
       <h3 className="text-lg font-semibold text-gray-200 mb-4">{t('deposit.title')}</h3>
 
-      {isSuccess ? (
+      {isDepositSuccess ? (
         <div className="text-center py-4">
           <div className="w-12 h-12 mx-auto mb-3 bg-green-500/10 rounded-full flex items-center justify-center">
             <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -104,9 +145,9 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
               >
                 MAX
               </button>
-              {balance && (
+              {wethBalance !== undefined && (
                 <span className="text-xs text-gray-500 ml-auto">
-                  {t('deposit.balance')}: {Number(formatEther(balance.value)).toFixed(4)} ETH
+                  {t('deposit.balance')}: {Number(formatEther(wethBalance)).toFixed(4)} ETH
                 </span>
               )}
             </div>
@@ -150,13 +191,24 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
             </p>
           )}
 
-          <button
-            onClick={handleDeposit}
-            disabled={!canDeposit}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold rounded-xl transition-colors"
-          >
-            {isPending ? t('deposit.confirming') : isConfirming ? t('deposit.processing') : t('deposit.button')}
-          </button>
+          {/* Two-step: Approve then Deposit */}
+          {needsApproval ? (
+            <button
+              onClick={handleApprove}
+              disabled={!canApprove}
+              className="w-full py-3 bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold rounded-xl transition-colors"
+            >
+              {isApprovePending ? t('deposit.confirming') : isApproveConfirming ? t('deposit.processing') : `Approve ETH`}
+            </button>
+          ) : (
+            <button
+              onClick={handleDeposit}
+              disabled={!canDeposit}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold rounded-xl transition-colors"
+            >
+              {isDepositPending ? t('deposit.confirming') : isDepositConfirming ? t('deposit.processing') : t('deposit.button')}
+            </button>
+          )}
         </>
       )}
     </div>

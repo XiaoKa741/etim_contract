@@ -13,14 +13,24 @@ interface IETIMTaxHook {
     function sellTaxToS6() external view returns (uint256);
 }
 
+interface IPancakeRouter {
+    function swapExactETHForTokens(
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external payable returns (uint[] memory amounts);
+    function WETH() external pure returns (address);
+}
+
 interface IETIMPoolHelper {
     function getEthReserves() external view returns (uint256);
     function getEtimPerEth() external view returns (uint256);
     function getUsdcPerEth() external view returns (uint256);
-    function swapEthToEtim(uint256 ethAmount) external payable returns (uint256);
+    function swapEthToEtim(uint256 ethAmount) external returns (uint256);
     function swapEtimToEth(uint256 etimAmount, address to) external returns (uint256);
-    function swapAndAddLiquidity(uint256 ethAmount) external payable;
-    function swapAndBurn(uint256 ethAmount) external payable;
+    function swapAndAddLiquidity(uint256 ethAmount) external;
+    function swapAndBurn(uint256 ethAmount) external;
 }
 
 contract ETIMMain is Ownable2Step, ReentrancyGuard {
@@ -47,9 +57,12 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     // Other contract
     IERC20          public etimToken;
+    IERC20          public weth;        // BSC bridged ETH (ERC-20)
     IERC721         public etimNode;
     IETIMPoolHelper public etimPoolHelper;
     address         public etimTaxHook;
+    IPancakeRouter  public pancakeRouter;   // PancakeSwap V2 Router for BNB→WETH swap
+    address         public wbnb;            // WBNB address on BSC
 
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
@@ -146,8 +159,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     mapping(uint256 => uint256) public dailyEthEtimPrice;  // day => ETIM per ETH (18 decimals)
     mapping(uint256 => uint256) public dailyUsdEtimPrice;  // day => ETIM per USD (18 decimals)
 
-    uint256 public ethPriceInUsd  = 600 * 10**6;    // 1 BNB = 600 USD (6 decimals)
-    uint256 public ethPriceInEtim = 600 * 10**18;   // 1 BNB = 600 ETIM (18 decimals)
+    uint256 public ethPriceInUsd  = 2000 * 10**6;   // 1 ETH = 2000 USD (6 decimals)
+    uint256 public ethPriceInEtim = 2000 * 10**18;  // 1 ETH = 2000 ETIM (18 decimals)
     uint256 public etimPerUsd     = 1 * 10**18;     // 1 USD = 1 ETIM (18 decimals)
 
     uint256 public lastEthEtimPriceTime = 0;
@@ -214,14 +227,20 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
     constructor(
         address _etimToken,
+        address _weth,
         address _etimNode,
         address _etimPoolHelper,
-        address _etimTaxHook
+        address _etimTaxHook,
+        address _pancakeRouter,
+        address _wbnb
     ) Ownable(msg.sender) {
         etimToken      = IERC20(_etimToken);
+        weth           = IERC20(_weth);
         etimNode       = IERC721(_etimNode);
         etimPoolHelper = IETIMPoolHelper(_etimPoolHelper);
         etimTaxHook    = _etimTaxHook;
+        pancakeRouter  = IPancakeRouter(_pancakeRouter);
+        wbnb           = _wbnb;
 
         _initializeLevelConditions();
     }
@@ -237,9 +256,10 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         levelConditions[6] = LevelCondition(30, 300000 * 10**18, 5000000 * 10**18, 21);
     }
 
-    // User deposits ETH to participate
-    function deposit() external payable nonReentrant {
-        _processParticipation(msg.sender, msg.value);
+    // User deposits WETH (BSC bridged ETH) to participate
+    function deposit(uint256 ethAmount) external nonReentrant {
+        weth.safeTransferFrom(msg.sender, address(this), ethAmount);
+        _processParticipation(msg.sender, ethAmount);
     }
 
     // Participation logic
@@ -299,7 +319,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         emit Participated(addr, ethAmount);
     }
 
-    // Allocate ETH: node/reward immediate; LP(69%) + burn(25%) rate-limited via pending
+    // Allocate WETH: node/reward immediate; LP(69%) + burn(25%) rate-limited via pending
     function _allocateDepositFunds(uint256 ethAmount) private {
         uint256 nodeEth     = (ethAmount * NODE_SHARE) / FEE_DENOMINATOR;
         uint256 lpEth       = (ethAmount * LP_SHARE)   / FEE_DENOMINATOR;
@@ -317,8 +337,11 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth;   s2Eth   = 0; }
         if (totalActiveS3PlusPlayers == 0) { lpEth += s3Eth;   s3Eth   = 0; }
 
-        // Immediate distributions
-        if (nodeEth > 0)       _distributeNodeRewards(etimPoolHelper.swapEthToEtim{value: nodeEth}(nodeEth));
+        // Immediate distributions (approve WETH to PoolHelper for swap operations)
+        if (nodeEth > 0) {
+            weth.approve(address(etimPoolHelper), nodeEth);
+            _distributeNodeRewards(etimPoolHelper.swapEthToEtim(nodeEth));
+        }
         if (s2Eth > 0)         _distributeS2PlusRewards(s2Eth);
         if (s3Eth > 0)         _distributeS3PlusRewards(s3Eth);
         if (foundationEth > 0) foundationRewardEth += foundationEth;
@@ -331,9 +354,15 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         pendingLpEth       += lpEth       - lpInject;
         pendingSwapBurnEth += swapBurnEth - swapBurnInject;
-        
-        if (lpInject > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpInject}(lpInject);
-        if (swapBurnInject > 0) etimPoolHelper.swapAndBurn{value: swapBurnInject}(swapBurnInject);
+
+        if (lpInject > 0) {
+            weth.approve(address(etimPoolHelper), lpInject);
+            etimPoolHelper.swapAndAddLiquidity(lpInject);
+        }
+        if (swapBurnInject > 0) {
+            weth.approve(address(etimPoolHelper), swapBurnInject);
+            etimPoolHelper.swapAndBurn(swapBurnInject);
+        }
     }
 
 
@@ -935,13 +964,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         for (uint256 i = 0; i < count; i++) {
             address player = players[i];
-            (bool ok,) = player.call{value: share}("");
-            if (ok) {
-                emit S2PlusRewardClaimed(player, share);
-            } else {
-                s2PlusPendingEth[player] += share;
-                emit S2PlusEthTransferFailed(player, share);
-            }
+            weth.safeTransfer(player, share);
+            emit S2PlusRewardClaimed(player, share);
         }
     }
 
@@ -1015,13 +1039,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         for (uint256 i = 0; i < count; i++) {
             address player = players[i];
-            (bool ok,) = player.call{value: share}("");
-            if (ok) {
-                emit S3PlusRewardClaimed(player, share);
-            } else {
-                s3PlusPendingEth[player] += share;
-                emit S3PlusEthTransferFailed(player, share);
-            }
+            weth.safeTransfer(player, share);
+            emit S3PlusRewardClaimed(player, share);
         }
     }
 
@@ -1167,8 +1186,14 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
 
-        if (lpAmount > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpAmount}(lpAmount);
-        if (swapBurnAmount > 0) etimPoolHelper.swapAndBurn{value: swapBurnAmount}(swapBurnAmount);
+        if (lpAmount > 0) {
+            weth.approve(address(etimPoolHelper), lpAmount);
+            etimPoolHelper.swapAndAddLiquidity(lpAmount);
+        }
+        if (swapBurnAmount > 0) {
+            weth.approve(address(etimPoolHelper), swapBurnAmount);
+            etimPoolHelper.swapAndBurn(swapBurnAmount);
+        }
     }
 
     // Manually injects exact amounts of LP and burn from pending
@@ -1191,8 +1216,14 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
 
-        if (lpAmount > 0)       etimPoolHelper.swapAndAddLiquidity{value: lpAmount}(lpAmount);
-        if (swapBurnAmount > 0) etimPoolHelper.swapAndBurn{value: swapBurnAmount}(swapBurnAmount);
+        if (lpAmount > 0) {
+            weth.approve(address(etimPoolHelper), lpAmount);
+            etimPoolHelper.swapAndAddLiquidity(lpAmount);
+        }
+        if (swapBurnAmount > 0) {
+            weth.approve(address(etimPoolHelper), swapBurnAmount);
+            etimPoolHelper.swapAndBurn(swapBurnAmount);
+        }
     }
 
     function setLpBurnCooldown(uint256 cooldown) external onlyOwner {
@@ -1257,53 +1288,48 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         levelConditions[level] = LevelCondition(minDirectReferrals, minPersonalTokens, minTeamTokens, accelerationRate);
     }
 
-    // withdraw foundation
-    function withdrawFoundation(address payable to) external onlyOwner nonReentrant {
+    // withdraw foundation (WETH)
+    function withdrawFoundation(address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         uint256 amount = foundationRewardEth;
         if (amount == 0) revert NothingToWithdraw();
         foundationRewardEth = 0;
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        weth.safeTransfer(to, amount);
     }
 
-    // withdraw pot
-    function withdrawPot(address payable to) external onlyOwner nonReentrant {
+    // withdraw pot (WETH)
+    function withdrawPot(address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         uint256 amount = potRewardEth;
         if (amount == 0) revert NothingToWithdraw();
         potRewardEth = 0;
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        weth.safeTransfer(to, amount);
     }
 
-    // withdraw official
-    function withdrawOfficial(address payable to) external onlyOwner nonReentrant {
+    // withdraw official (WETH)
+    function withdrawOfficial(address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
         uint256 amount = officialRewardEth;
         if (amount == 0) revert NothingToWithdraw();
         officialRewardEth = 0;
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        weth.safeTransfer(to, amount);
     }
 
-    // Withdraw S2+ pending ETH (fallback for failed push transfers)
+    // Withdraw S2+ pending WETH
     function withdrawS2PlusPendingEth() external nonReentrant {
         uint256 amount = s2PlusPendingEth[msg.sender];
         if (amount == 0) revert NothingToWithdraw();
         s2PlusPendingEth[msg.sender] = 0;
-        (bool ok,) = msg.sender.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        weth.safeTransfer(msg.sender, amount);
         emit S2PlusPendingEthWithdrawn(msg.sender, amount);
     }
 
-    // Withdraw S3+ pending ETH (fallback for failed push transfers)
+    // Withdraw S3+ pending WETH
     function withdrawS3PlusPendingEth() external nonReentrant {
         uint256 amount = s3PlusPendingEth[msg.sender];
         if (amount == 0) revert NothingToWithdraw();
         s3PlusPendingEth[msg.sender] = 0;
-        (bool ok,) = msg.sender.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        weth.safeTransfer(msg.sender, amount);
         emit S3PlusPendingEthWithdrawn(msg.sender, amount);
     }
 
@@ -1319,8 +1345,25 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     //                       RECEIVE
     // =========================================================
 
+    // Accept native BNB: auto-swap to WETH via PancakeSwap V2, then deposit
     receive() external payable nonReentrant {
-        _processParticipation(msg.sender, msg.value);
+        if (msg.value == 0) return;
+
+        // Swap BNB → WETH via PancakeSwap V2 Router
+        address[] memory path = new address[](2);
+        path[0] = wbnb;
+        path[1] = address(weth);
+
+        uint256 wethBefore = weth.balanceOf(address(this));
+        pancakeRouter.swapExactETHForTokens{value: msg.value}(
+            0,              // accept any amount (slippage handled by deposit validation)
+            path,
+            address(this),
+            block.timestamp
+        );
+        uint256 wethReceived = weth.balanceOf(address(this)) - wethBefore;
+
+        _processParticipation(msg.sender, wethReceived);
     }
 
     // =========================================================

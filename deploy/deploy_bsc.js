@@ -10,8 +10,11 @@ async function deploy() {
     // BSC Mainnet addresses
     const VAULT_ADDRESS = "0x238a358808379702088667322f80aC48bAd5e6c4";
     const CL_POOL_MANAGER_ADDRESS = "0xa0FfB9c1CE1Fe56963B0321B32E7A0302114058b";
+    const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";  // BSC bridged ETH
     const USDC_ADDRESS = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"; // BSC USDC
-    const CHAINLINK_BNB_USD = "0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE";
+    const CHAINLINK_ETH_USD = "0x9ef1B8c0E4F7dc8bF5719Ea496883DC6401d5b2e"; // ETH/USD on BSC
+    const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E"; // PancakeSwap V2 Router
+    const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";   // WBNB on BSC
 
     const [deployer] = await ethers.getSigners();
 
@@ -58,15 +61,16 @@ async function deploy() {
     console.log("税收HOOK合约:", hookAddress);
 
     // ========== 部署BNB/ETIM代币池合约 ==========
-    console.log("\n🆗. 部署BNB/ETIM代币池合约...");
+    console.log("\n🆗. 部署WETH/ETIM代币池合约...");
     const ETIMPool = await ethers.getContractFactory("ETIMPoolHelper");
     const etimPool = await ETIMPool.deploy(
         VAULT_ADDRESS,
         CL_POOL_MANAGER_ADDRESS,
+        WETH_ADDRESS,
         etimTokenAddress,
         USDC_ADDRESS,
         hookAddress,
-        CHAINLINK_BNB_USD,
+        CHAINLINK_ETH_USD,
     );
     await etimPool.waitForDeployment();
     const etimPoolAddress = await etimPool.getAddress();
@@ -77,9 +81,12 @@ async function deploy() {
     const ETIMMain = await ethers.getContractFactory("ETIMMain");
     const etimMain = await ETIMMain.deploy(
         etimTokenAddress,
+        WETH_ADDRESS,
         etimNodeAddress,
         etimPoolAddress,
         hookAddress,
+        PANCAKE_ROUTER_V2,
+        WBNB_ADDRESS,
     );
     await etimMain.waitForDeployment();
     const etimMainAddress = await etimMain.getAddress();
@@ -129,14 +136,14 @@ async function deploy() {
         return prev;
     };
     const Q96 = 2n ** 96n;
-    const priceEtimPerBnb = 500000n; // 1 BNB = 500000 ETIM
-    const sqrtPriceX96 = sqrtBigInt(priceEtimPerBnb * Q96 * Q96);
+    const priceEtimPerEth = 500000n; // 1 ETH = 500000 ETIM
+    const sqrtPriceX96 = sqrtBigInt(priceEtimPerEth * Q96 * Q96);
     tx = await etimPool.initializePool(sqrtPriceX96);
     await tx.wait();
-    console.log("【池子HELPER合约】初始化池子价格BNB/ETIM");
-    console.log("【池子HELPER合约】ETIM per BNB:", ethers.formatEther(await etimPool.getEtimPerEth()));
-    console.log("【池子HELPER合约】USDC per BNB:", ethers.formatUnits(await etimPool.getUsdcPerEth(), 6));
-    console.log("【池子HELPER合约】池子内BNB余量:", ethers.formatEther(await etimPool.getEthReserves()));
+    console.log("【池子HELPER合约】初始化池子价格WETH/ETIM");
+    console.log("【池子HELPER合约】ETIM per ETH:", ethers.formatEther(await etimPool.getEtimPerEth()));
+    console.log("【池子HELPER合约】USDC per ETH:", ethers.formatUnits(await etimPool.getUsdcPerEth(), 6));
+    console.log("【池子HELPER合约】池子内WETH余量:", ethers.formatEther(await etimPool.getEthReserves()));
 
     console.log("【池子HOOK合约】设置不收税白名单", etimPoolAddress);
     tx = await etimHook.setExempt(etimPoolAddress, true);
@@ -161,21 +168,25 @@ async function deploy() {
 }
 
 async function addLiquidity() {
-    console.log("添加流动性 ETIM/BNB...");
+    console.log("添加流动性 ETIM/WETH...");
 
     const [deployer] = await ethers.getSigners();
+    const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
 
     const ETIMTokenAddress = ""; // 替换为实际地址
     const ETIMPoolAddress = ""; // 替换为实际地址
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
+    const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
 
     let tx = await etimToken.connect(deployer).approve(ETIMPoolAddress, ethers.MaxInt256);
     await tx.wait();
+    tx = await weth.connect(deployer).approve(ETIMPoolAddress, ethers.MaxInt256);
+    await tx.wait();
 
-    const bnbAmount = ethers.parseEther("0.1");
+    const ethAmount = ethers.parseEther("0.1");
     const etimAmount = ethers.parseEther("100");
-    tx = await etimPool.connect(deployer).addLiquidity(bnbAmount, etimAmount, { value: bnbAmount });
+    tx = await etimPool.connect(deployer).addLiquidity(ethAmount, etimAmount);
     await tx.wait();
 
     console.log("🆗流动性添加完成");
