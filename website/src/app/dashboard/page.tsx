@@ -17,7 +17,7 @@ import { CONTRACTS } from '@/config/contracts';
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
-  const { user, referrer, tokenBalance, nodeBalance, isLoading } = useUserInfo(address);
+  const { user, referrer, tokenBalance, nodeBalance, smallZoneTokens, isLoading } = useUserInfo(address);
   const { miningReward, nodeReward, s2PlusReward, s3PlusReward, s6Reward } = useClaimable(address);
   const { t } = useTranslation();
   const config = useParticipationConfig();
@@ -150,9 +150,9 @@ export default function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <LevelCard level={user?.level ?? 0} directReferrals={user?.directReferralCount ?? 0} personalTokens={formatEther(tokenBalance)} teamTokens={user?.teamTokenBalance ?? '0'} />
+        <LevelCard level={user?.level ?? 0} directReferrals={user?.directReferralCount ?? 0} personalTokens={formatEther(tokenBalance)} teamTokens={formatEther(smallZoneTokens)} />
         <UserInfoCard investedEth={user?.investedEthAmount ?? '0'} investedUsd={user?.investedValueInUsd ?? 0} claimedUsd={user?.claimedValueInUsd ?? 0} participationTime={user?.participationTime ?? 0} lastClaimTime={user?.lastClaimTime ?? 0} />
-        <ReferralCard directReferralCount={user?.directReferralCount ?? 0} referrer={referrer ?? undefined} teamTokenBalance={user?.teamTokenBalance ?? '0'} s2PlusActive={user?.s2PlusActive ?? false} s6Active={user?.s6Active ?? false} />
+        <ReferralCard directReferralCount={user?.directReferralCount ?? 0} referrer={referrer ?? undefined} teamTokenBalance={user?.teamTokenBalance ? formatEther(BigInt(user.teamTokenBalance)) : '0'} s2PlusActive={user?.s2PlusActive ?? false} s6Active={user?.s6Active ?? false} />
         <RewardsCard miningReward={miningReward} nodeReward={nodeReward} s2PlusReward={s2PlusReward} s3PlusReward={s3PlusReward} s6Reward={s6Reward} isParticipant={user?.isParticipant ?? false} level={user?.level ?? 0} syncedNodeCount={user?.syncedNodeCount ?? 0} />
       </div>
 

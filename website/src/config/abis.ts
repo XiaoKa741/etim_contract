@@ -129,12 +129,19 @@ export const ETIMMainABI = [
       { name: 'accelerationRate', type: 'uint256' },
     ],
   },
+  {
+    name: 'getSmallZoneTokens',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
   // Write functions
   {
     name: 'deposit',
     type: 'function',
-    stateMutability: 'payable',
-    inputs: [],
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'ethAmount', type: 'uint256' }],
     outputs: [],
   },
   {

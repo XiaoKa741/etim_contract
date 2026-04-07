@@ -11,13 +11,13 @@ export const LEVEL_COLORS: Record<number, string> = {
 };
 
 export const LEVEL_REQUIREMENTS = [
-  { level: 'S0', referrals: 0, personal: '0', team: '0', acceleration: '3%' },
-  { level: 'S1', referrals: 5, personal: '10,000', team: '100,000', acceleration: '7%' },
-  { level: 'S2', referrals: 10, personal: '20,000', team: '200,000', acceleration: '10%' },
-  { level: 'S3', referrals: 15, personal: '30,000', team: '400,000', acceleration: '12%' },
-  { level: 'S4', referrals: 20, personal: '40,000', team: '500,000', acceleration: '15%' },
-  { level: 'S5', referrals: 25, personal: '50,000', team: '600,000', acceleration: '18%' },
-  { level: 'S6', referrals: 30, personal: '60,000', team: '700,000', acceleration: '21%' },
+  { level: 'S0', referrals: 0, personal: '0', team: '0', acceleration: '0%' },
+  { level: 'S1', referrals: 5, personal: '30,000', team: '300,000', acceleration: '7%' },
+  { level: 'S2', referrals: 10, personal: '50,000', team: '1,000,000', acceleration: '10%' },
+  { level: 'S3', referrals: 15, personal: '100,000', team: '2,000,000', acceleration: '12%' },
+  { level: 'S4', referrals: 20, personal: '150,000', team: '3,000,000', acceleration: '15%' },
+  { level: 'S5', referrals: 25, personal: '200,000', team: '4,000,000', acceleration: '18%' },
+  { level: 'S6', referrals: 30, personal: '300,000', team: '5,000,000', acceleration: '21%' },
 ];
 
 export const TOKENOMICS = [
@@ -32,8 +32,9 @@ export const TOKENOMICS = [
 export const DEPOSIT_ALLOCATION = [
   { name: 'Liquidity Pool', percent: 69, color: 'bg-blue-500' },
   { name: 'Token Burn', percent: 25, color: 'bg-red-500' },
-  { name: 'S2+ Rewards', percent: 2.5, color: 'bg-green-500' },
+  { name: 'Node Rewards', percent: 1.5, color: 'bg-orange-500' },
+  { name: 'S2+ Rewards', percent: 1, color: 'bg-green-500' },
+  { name: 'S3+ Rewards', percent: 1, color: 'bg-teal-500' },
   { name: 'Foundation', percent: 1.5, color: 'bg-purple-500' },
-  { name: 'Node Rewards', percent: 1, color: 'bg-orange-500' },
   { name: 'Pot & Official', percent: 1, color: 'bg-gray-500' },
 ];

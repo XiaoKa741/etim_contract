@@ -750,6 +750,10 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     }
 
     /// @notice Calculate "small zone" tokens = totalTeamTokens - largest direct referral branch
+    function getSmallZoneTokens(address user) public view returns (uint256) {
+        return _getSmallZoneTokens(user);
+    }
+
     function _getSmallZoneTokens(address user) internal view returns (uint256) {
         uint256 totalTeam = users[user].teamTokenBalance;
         if (totalTeam == 0) return 0;

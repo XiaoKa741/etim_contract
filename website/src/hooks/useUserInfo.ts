@@ -38,10 +38,18 @@ export function useUserInfo(address: `0x${string}` | undefined) {
     query: { enabled: !!address },
   });
 
+  const { data: smallZoneTokens } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'getSmallZoneTokens',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+
   const isLoading = userLoading || referrerLoading;
 
   if (!userData || !address) {
-    return { isLoading, user: null, referrer: null, tokenBalance: BigInt(0), nodeBalance: BigInt(0) };
+    return { isLoading, user: null, referrer: null, tokenBalance: BigInt(0), nodeBalance: BigInt(0), smallZoneTokens: BigInt(0) };
   }
 
   const [
@@ -82,5 +90,6 @@ export function useUserInfo(address: `0x${string}` | undefined) {
     referrer: referrer as `0x${string}` | undefined,
     tokenBalance: tokenBalance as bigint ?? BigInt(0),
     nodeBalance: nodeBalance as bigint ?? BigInt(0),
+    smallZoneTokens: smallZoneTokens as bigint ?? BigInt(0),
   };
 }
