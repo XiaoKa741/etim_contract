@@ -16,6 +16,8 @@ import {CLPoolParametersHelper} from "@pancakeswap/infinity-core/src/pool-cl/lib
 import {LiquidityAmounts} from "@pancakeswap/infinity-periphery/src/pool-cl/libraries/LiquidityAmounts.sol";
 import {BalanceDelta} from "@pancakeswap/infinity-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@pancakeswap/infinity-core/src/interfaces/IHooks.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 interface AggregatorV3Interface {
     function latestRoundData() external view returns (
@@ -29,7 +31,7 @@ interface AggregatorV3Interface {
 
 /// @notice ETIM Pool Helper — manages WETH/ETIM pool on PancakeSwap V4 (BSC)
 /// Uses ERC-20 WETH (bridged ETH on BSC: 0x2170Ed0880ac9A755fd29B2688956BD959F933F8)
-contract ETIMPoolHelper is ILockCallback {
+contract ETIMPoolHelper is Initializable, UUPSUpgradeable, ILockCallback {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -134,15 +136,17 @@ contract ETIMPoolHelper is ILockCallback {
     //                      CONSTRUCTOR
     // =========================================================
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(
         address _vault,
         address _poolManager,
         address _weth,
         address _etim,
         address _usdc,
-        address _hook,
         address _ethUsdFeed
     ) {
+        _disableInitializers();
+
         if (_vault       == address(0)) revert ZeroAddress();
         if (_poolManager == address(0)) revert ZeroAddress();
         if (_weth        == address(0)) revert ZeroAddress();
@@ -150,25 +154,31 @@ contract ETIMPoolHelper is ILockCallback {
         if (_usdc        == address(0)) revert ZeroAddress();
         if (_ethUsdFeed  == address(0)) revert ZeroAddress();
 
+        // Immutables — stored in bytecode, available to proxy via delegatecall
         vault       = IVault(_vault);
         poolManager = ICLPoolManager(_poolManager);
         weth        = IERC20(_weth);
         etim        = IERC20(_etim);
         usdc        = IERC20(_usdc);
         ethUsdFeed  = AggregatorV3Interface(_ethUsdFeed);
-        owner       = msg.sender;
+        wethIsCurrency0 = Currency.wrap(_weth) < Currency.wrap(_etim);
+        wethIsUsdcC0    = Currency.wrap(_weth) < Currency.wrap(_usdc);
+    }
+
+    function initialize(address _hook) external initializer {
+        __UUPSUpgradeable_init();
+
+        owner = msg.sender;
 
         int24 tickSpacing60 = 60;
         int24 tickSpacing10 = 10;
 
-        // WETH / ETIM pool (fee 3000, tickSpacing 60)
+        // Build WETH / ETIM PoolKey using immutable values
         {
-            Currency cW = Currency.wrap(_weth);
-            Currency cE = Currency.wrap(_etim);
-            bool wIs0 = cW < cE;
-            wethIsCurrency0 = wIs0;
-            Currency c0 = wIs0 ? cW : cE;
-            Currency c1 = wIs0 ? cE : cW;
+            Currency cW = Currency.wrap(address(weth));
+            Currency cE = Currency.wrap(address(etim));
+            Currency c0 = wethIsCurrency0 ? cW : cE;
+            Currency c1 = wethIsCurrency0 ? cE : cW;
             etimEthPoolKey = PoolKey({
                 currency0:   c0,
                 currency1:   c1,
@@ -180,14 +190,12 @@ contract ETIMPoolHelper is ILockCallback {
             etimEthPoolId = etimEthPoolKey.toId();
         }
 
-        // USDC / WETH pool (fee 500, tickSpacing 10) — for price fallback
+        // Build USDC / WETH PoolKey
         {
-            Currency cW = Currency.wrap(_weth);
-            Currency cU = Currency.wrap(_usdc);
-            bool wIsU0 = cW < cU;
-            wethIsUsdcC0 = wIsU0;
-            Currency c0 = wIsU0 ? cW : cU;
-            Currency c1 = wIsU0 ? cU : cW;
+            Currency cW = Currency.wrap(address(weth));
+            Currency cU = Currency.wrap(address(usdc));
+            Currency c0 = wethIsUsdcC0 ? cW : cU;
+            Currency c1 = wethIsUsdcC0 ? cU : cW;
             usdcEthPoolKey = PoolKey({
                 currency0:   c0,
                 currency1:   c1,
@@ -199,6 +207,8 @@ contract ETIMPoolHelper is ILockCallback {
             usdcEthPoolId = usdcEthPoolKey.toId();
         }
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     // =========================================================
     //                    VIEW FUNCTIONS
@@ -701,4 +711,11 @@ contract ETIMPoolHelper is ILockCallback {
         owner        = pendingOwner;
         pendingOwner = address(0);
     }
+
+    // =========================================================
+    //                     STORAGE GAP
+    // =========================================================
+
+    /// @dev Reserved storage space for future upgrades
+    uint256[50] private __gap;
 }

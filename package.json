@@ -20,6 +20,8 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
+    "@openzeppelin/contracts-upgradeable": "^5.4.0",
+    "@openzeppelin/hardhat-upgrades": "^3.0.0",
     "@pancakeswap/infinity-core": "github:pancakeswap/infinity-core",
     "@pancakeswap/infinity-periphery": "github:pancakeswap/infinity-periphery",
     "dotenv": "^17.2.3"

@@ -1,4 +1,4 @@
-const { ethers } = require("hardhat");
+const { ethers, upgrades } = require("hardhat");
 
 async function main() {
     // await deploy();
@@ -61,25 +61,28 @@ async function deploy() {
     console.log("税收HOOK合约:", hookAddress);
 
     // ========== 部署BNB/ETIM代币池合约 ==========
-    console.log("\n🆗. 部署WETH/ETIM代币池合约...");
+    console.log("\n🆗. 部署WETH/ETIM代币池合约 (UUPS Proxy)...");
     const ETIMPool = await ethers.getContractFactory("ETIMPoolHelper");
-    const etimPool = await ETIMPool.deploy(
-        VAULT_ADDRESS,
-        CL_POOL_MANAGER_ADDRESS,
-        WETH_ADDRESS,
-        etimTokenAddress,
-        USDC_ADDRESS,
-        hookAddress,
-        CHAINLINK_ETH_USD,
-    );
+    const etimPool = await upgrades.deployProxy(ETIMPool, [hookAddress], {
+        kind: 'uups',
+        constructorArgs: [
+            VAULT_ADDRESS,
+            CL_POOL_MANAGER_ADDRESS,
+            WETH_ADDRESS,
+            etimTokenAddress,
+            USDC_ADDRESS,
+            CHAINLINK_ETH_USD,
+        ],
+        unsafeAllow: ['constructor'],
+    });
     await etimPool.waitForDeployment();
     const etimPoolAddress = await etimPool.getAddress();
-    console.log("池子HELPER合约地址:", etimPoolAddress);
+    console.log("池子HELPER合约地址 (Proxy):", etimPoolAddress);
 
-    // ========== 部署主合约 ==========
-    console.log("\n🆗. 部署ETIM主合约...");
+    // ========== 部署主合约 (UUPS Proxy) ==========
+    console.log("\n🆗. 部署ETIM主合约 (UUPS Proxy)...");
     const ETIMMain = await ethers.getContractFactory("ETIMMain");
-    const etimMain = await ETIMMain.deploy(
+    const etimMain = await upgrades.deployProxy(ETIMMain, [
         etimTokenAddress,
         WETH_ADDRESS,
         etimNodeAddress,
@@ -87,10 +90,10 @@ async function deploy() {
         hookAddress,
         PANCAKE_ROUTER_V2,
         WBNB_ADDRESS,
-    );
+    ], { kind: 'uups' });
     await etimMain.waitForDeployment();
     const etimMainAddress = await etimMain.getAddress();
-    console.log("主合约地址:", etimMainAddress);
+    console.log("主合约地址 (Proxy):", etimMainAddress);
 
     // ========== 分配代币（总量 100,000,000 ETIM）==========
     console.log("\n🆗. 分配代币...");

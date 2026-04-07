@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "@openzeppelin/contracts/access/Ownable2Step.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -32,7 +34,7 @@ interface IETIMPoolHelper {
     function swapAndBurn(uint256 ethAmount) external;
 }
 
-contract ETIMMain is Ownable2Step, ReentrancyGuard {
+contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     // ERRORS
@@ -218,7 +220,10 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     event S6RewardClaimed(address indexed user, uint256 amount);
     event LpBurnManualTriggered(address indexed caller, uint256 lpAmount, uint256 swapBurnAmount);
 
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() { _disableInitializers(); }
+
+    function initialize(
         address _etimToken,
         address _weth,
         address _etimNode,
@@ -226,7 +231,12 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         address _etimTaxHook,
         address _pancakeRouter,
         address _wbnb
-    ) Ownable(msg.sender) {
+    ) external initializer {
+        __Ownable_init(msg.sender);
+        __Ownable2Step_init();
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
         if (_etimToken == address(0) || _weth == address(0) || _etimNode == address(0) ||
             _etimPoolHelper == address(0) || _etimTaxHook == address(0) ||
             _pancakeRouter == address(0) || _wbnb == address(0)) revert ZeroAddress();
@@ -242,8 +252,10 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         _initializeLevelConditions();
     }
 
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
     // Initialize membership level conditions
-    function _initializeLevelConditions() private {
+    function _initializeLevelConditions() internal {
         levelConditions[0] = LevelCondition(0,  0,               0,                 0); // S0 uses s0AccelerationRate instead
         levelConditions[1] = LevelCondition(5,  30000  * 10**18, 300000  * 10**18,  7);
         levelConditions[2] = LevelCondition(10, 50000  * 10**18, 1000000 * 10**18, 10);
@@ -1370,7 +1382,9 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     }
 
     // =========================================================
-    //                       HELPERS
+    //                     STORAGE GAP
     // =========================================================
 
+    /// @dev Reserved storage space for future upgrades
+    uint256[50] private __gap;
 }
