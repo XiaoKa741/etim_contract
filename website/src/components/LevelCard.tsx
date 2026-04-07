@@ -8,10 +8,11 @@ interface LevelCardProps {
   level: number;
   directReferrals: number;
   personalTokens: string;
-  teamTokens: string;
+  totalTeamTokens: string;
+  smallZoneTokens: string;
 }
 
-export function LevelCard({ level, directReferrals, personalTokens, teamTokens }: LevelCardProps) {
+export function LevelCard({ level, directReferrals, personalTokens, totalTeamTokens, smallZoneTokens }: LevelCardProps) {
   const { t } = useTranslation();
   const levelConditions = useLevelConditions();
   const currentLevel = LEVEL_NAMES[level] ?? 'S0';
@@ -46,9 +47,16 @@ export function LevelCard({ level, directReferrals, personalTokens, teamTokens }
         </div>
         <div>
           <div className="flex justify-between text-sm mb-1">
-            <span className="text-gray-400">{t('level.teamEtim')}</span>
-            <span className="text-white">{Number(teamTokens).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            <span className="text-gray-400">{t('level.totalTeamEtim')}</span>
+            <span className="text-white">{Number(totalTeamTokens).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
           </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-gray-400">{t('level.teamEtim')}</span>
+            <span className="text-indigo-300 font-medium">{Number(smallZoneTokens).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+          </div>
+          <p className="text-xs text-gray-500">{t('level.smallZoneNote')}</p>
         </div>
       </div>
       {nextLevel && (

@@ -324,6 +324,23 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         totalDeposited    += ethAmount;
         dailyDepositTotal += ethAmount;
 
+        // First deposit: propagate this user's branchTokenBalance up to ancestors' teamTokenBalance
+        // Before this point, the user's token balance was tracked in branchTokenBalance but not
+        // propagated to team because participationTime was 0
+        if (referrerOf[addr] != address(0)) {
+            uint256 branch = branchTokenBalance[addr];
+            if (branch > 0) {
+                address cur = addr;
+                for (uint256 d = 0; d < maxTeamDepth; d++) {
+                    address ref = referrerOf[cur];
+                    if (ref == address(0)) break;
+                    users[ref].teamTokenBalance += branch;
+                    branchTokenBalance[ref] += branch;
+                    cur = ref;
+                }
+            }
+        }
+
         _checkAndUpdateLevel(addr);
 
         emit Participated(addr, ethAmount);
@@ -510,18 +527,18 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     }
 
     /// @notice Calculate acceleration bonus ETIM for a user on a given day
-    /// S0: direct referrals' daily ETIM output * accelerationRate / 100
+    /// S0: direct referrals' daily ETIM output * s0AccelerationRate / 1000
     /// S1-S6: small zone downstream daily ETIM output * accelerationRate / 100
     function _calculateAccelerationBonus(address userAddr, uint8 level, uint256 day) private view returns (uint256 bonusEtim) {
-        uint256 accelerationRate = levelConditions[level].accelerationRate;
-        if (accelerationRate == 0) return 0;
-
         if (level == 0) {
-            // S0: bonus from direct referrals' daily output
+            // S0: bonus from all direct referrals' daily output
+            if (s0AccelerationRate == 0) return 0;
             uint256 totalDirectDailyEtim = _getDirectReferralsDailyEtim(userAddr, day);
-            bonusEtim = (totalDirectDailyEtim * accelerationRate) / 100;
+            bonusEtim = (totalDirectDailyEtim * s0AccelerationRate) / 1000;
         } else {
             // S1-S6: bonus from small zone downstream daily output
+            uint256 accelerationRate = levelConditions[level].accelerationRate;
+            if (accelerationRate == 0) return 0;
             uint256 smallZoneDailyEtim = _getSmallZoneDailyEtim(userAddr, day);
             bonusEtim = (smallZoneDailyEtim * accelerationRate) / 100;
         }
@@ -688,21 +705,24 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
 
                 users[referrer].directReferralCount++;
 
-                // Initialize invitee's branchTokenBalance if not yet set
+                // Initialize invitee's branchTokenBalance (always track, even before deposit)
                 if (branchTokenBalance[invitee] == 0 && inviteePreBalance > 0) {
                     branchTokenBalance[invitee] = inviteePreBalance;
                 }
-                // Propagate the invitee's full branch (self + any existing downstream) up the referral chain
-                uint256 inviteeBranch = branchTokenBalance[invitee];
-                if (inviteeBranch > 0) {
-                    // Directly update referrer and ancestors (skip invitee's own branchTokenBalance since already set)
-                    address cur = invitee;
-                    for (uint256 d = 0; d < maxTeamDepth; d++) {
-                        address ref = referrerOf[cur];
-                        if (ref == address(0)) break;
-                        users[ref].teamTokenBalance += inviteeBranch;
-                        branchTokenBalance[ref] += inviteeBranch;
-                        cur = ref;
+
+                // Only propagate to team if invitee has already deposited
+                // If not deposited yet, propagation will happen at deposit time
+                if (users[invitee].participationTime > 0) {
+                    uint256 inviteeBranch = branchTokenBalance[invitee];
+                    if (inviteeBranch > 0) {
+                        address cur = invitee;
+                        for (uint256 d = 0; d < maxTeamDepth; d++) {
+                            address ref = referrerOf[cur];
+                            if (ref == address(0)) break;
+                            users[ref].teamTokenBalance += inviteeBranch;
+                            branchTokenBalance[ref] += inviteeBranch;
+                            cur = ref;
+                        }
                     }
                 }
 
@@ -772,14 +792,14 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     }
 
     // Reflect token transfer in team token balances (recursive up to maxTeamDepth)
-    // Supports both EOA and contract wallets
+    // Only deposited users (participationTime > 0) propagate to team; others only update own branchTokenBalance
     function _updateTeamTokenBalance(address from, address to, uint256 amount) private {
         if (from != address(0) && from != BURN_ADDRESS) {
             uint256 fromNewBalance = etimToken.balanceOf(from);
             uint256 fromOldBalance = fromNewBalance + amount;
             if (fromOldBalance != fromNewBalance) {
                 int256 delta = int256(fromNewBalance) - int256(fromOldBalance);
-                if (referrerOf[from] != address(0)) {
+                if (users[from].participationTime > 0 && referrerOf[from] != address(0)) {
                     _propagateTeamBalanceChange(from, delta);
                 } else {
                     _applyBranchDelta(from, delta);
@@ -792,7 +812,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
             uint256 toOldBalance = toNewBalance >= amount ? toNewBalance - amount : 0;
             if (toOldBalance != toNewBalance) {
                 int256 delta = int256(toNewBalance) - int256(toOldBalance);
-                if (referrerOf[to] != address(0)) {
+                if (users[to].participationTime > 0 && referrerOf[to] != address(0)) {
                     _propagateTeamBalanceChange(to, delta);
                 } else {
                     _applyBranchDelta(to, delta);
