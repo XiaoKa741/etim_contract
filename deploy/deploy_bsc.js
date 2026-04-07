@@ -137,7 +137,16 @@ async function deploy() {
     };
     const Q96 = 2n ** 96n;
     const priceEtimPerEth = 500000n; // 1 ETH = 500000 ETIM
-    const sqrtPriceX96 = sqrtBigInt(priceEtimPerEth * Q96 * Q96);
+
+    // sqrtPriceX96 = sqrt(token1/token0) * 2^96
+    // If WETH < ETIM (address order): currency0=WETH, currency1=ETIM, price=ETIM/WETH=500000
+    // If ETIM < WETH (address order): currency0=ETIM, currency1=WETH, price=WETH/ETIM=1/500000
+    const wethAddr = BigInt(WETH_ADDRESS);
+    const etimAddr = BigInt(etimTokenAddress);
+    const rawPrice = wethAddr < etimAddr ? priceEtimPerEth : (Q96 * Q96 / priceEtimPerEth);  // invert if needed
+    const sqrtPriceX96 = wethAddr < etimAddr
+        ? sqrtBigInt(priceEtimPerEth * Q96 * Q96)
+        : sqrtBigInt(Q96 * Q96 / priceEtimPerEth);
     tx = await etimPool.initializePool(sqrtPriceX96);
     await tx.wait();
     console.log("【池子HELPER合约】初始化池子价格WETH/ETIM");

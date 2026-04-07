@@ -683,8 +683,8 @@ contract ETIMPoolHelper is ILockCallback {
 
     function initializePool(uint160 sqrtPriceX96) external onlyOwner {
         poolManager.initialize(etimEthPoolKey, sqrtPriceX96);
-        weth.approve(address(vault), type(uint256).max);
-        etim.approve(address(vault), type(uint256).max);
+        weth.forceApprove(address(vault), type(uint256).max);
+        etim.forceApprove(address(vault), type(uint256).max);
     }
 
     // ---- Two-step ownership transfer ----
