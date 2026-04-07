@@ -15,6 +15,7 @@ import {FullMath} from "@pancakeswap/infinity-core/src/pool-cl/libraries/FullMat
 import {CLPoolParametersHelper} from "@pancakeswap/infinity-core/src/pool-cl/libraries/CLPoolParametersHelper.sol";
 import {LiquidityAmounts} from "@pancakeswap/infinity-periphery/src/pool-cl/libraries/LiquidityAmounts.sol";
 import {BalanceDelta} from "@pancakeswap/infinity-core/src/types/BalanceDelta.sol";
+import {IHooks} from "@pancakeswap/infinity-core/src/interfaces/IHooks.sol";
 
 interface AggregatorV3Interface {
     function latestRoundData() external view returns (
@@ -208,7 +209,12 @@ contract ETIMPoolHelper is ILockCallback {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimEthPoolId);
         uint128 liquidity = poolManager.getLiquidity(etimEthPoolId);
         if (liquidity == 0 || sqrtPriceX96 == 0) return 0;
-        ethReserves = FullMath.mulDiv(liquidity, 2 ** 96, sqrtPriceX96);
+        // token0 reserve = L * 2^96 / sqrtPrice; token1 reserve = L * sqrtPrice / 2^96
+        if (wethIsCurrency0) {
+            ethReserves = FullMath.mulDiv(liquidity, 2 ** 96, sqrtPriceX96);
+        } else {
+            ethReserves = FullMath.mulDiv(liquidity, sqrtPriceX96, 2 ** 96);
+        }
     }
 
     /// @notice Returns the amount of ETIM obtainable for 1 WETH
@@ -216,7 +222,14 @@ contract ETIMPoolHelper is ILockCallback {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(etimEthPoolId);
         if (sqrtPriceX96 == 0) return 0;
         uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
-        etimAmount = FullMath.mulDiv(priceX192, 1e18, 2 ** 192);
+        // sqrtPriceX96^2 / 2^192 = token1_per_token0
+        if (wethIsCurrency0) {
+            // price = ETIM/WETH → directly gives ETIM per WETH
+            etimAmount = FullMath.mulDiv(priceX192, 1e18, 2 ** 192);
+        } else {
+            // price = WETH/ETIM → invert to get ETIM per WETH
+            etimAmount = FullMath.mulDiv(2 ** 192, 1e18, priceX192);
+        }
     }
 
     /// @notice Returns the USDC price per 1 WETH — Chainlink primary, pool fallback
@@ -239,7 +252,19 @@ contract ETIMPoolHelper is ILockCallback {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(usdcEthPoolId);
         if (sqrtPriceX96 == 0) return 0;
         uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
-        usdcAmount = FullMath.mulDiv(priceX192, 10 ** 18, 2 ** 192);
+        // sqrtPriceX96^2 / 2^192 = token1_per_token0 (raw, needs decimal adjustment)
+        // WETH: 18 decimals, USDC: 6 decimals
+        if (wethIsUsdcC0) {
+            // currency0=WETH, currency1=USDC → price = USDC/WETH (raw)
+            // Result in 6-decimal USDC: rawPrice * 10^18 / 10^6 = rawPrice * 10^12
+            // But rawPrice is already token1/token0 with their decimals
+            // For 1 WETH (10^18 units): usdcAmount = priceX192 * 10^18 / 2^192 → gives USDC in 6 decimals
+            usdcAmount = FullMath.mulDiv(priceX192, 1e18, 2 ** 192);
+        } else {
+            // currency0=USDC, currency1=WETH → price = WETH/USDC (raw)
+            // Invert: USDC per WETH = 1 / (WETH/USDC) → scale by 10^18
+            usdcAmount = FullMath.mulDiv(2 ** 192, 1e18, priceX192);
+        }
     }
 
     // =========================================================

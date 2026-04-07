@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface IETIMTaxHook {
@@ -228,6 +227,10 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         address _pancakeRouter,
         address _wbnb
     ) Ownable(msg.sender) {
+        if (_etimToken == address(0) || _weth == address(0) || _etimNode == address(0) ||
+            _etimPoolHelper == address(0) || _etimTaxHook == address(0) ||
+            _pancakeRouter == address(0) || _wbnb == address(0)) revert ZeroAddress();
+
         etimToken      = IERC20(_etimToken);
         weth           = IERC20(_weth);
         etimNode       = IERC721(_etimNode);
@@ -333,16 +336,16 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         // Immediate distributions (approve WETH to PoolHelper for swap operations)
         if (nodeEth > 0) {
-            weth.approve(address(etimPoolHelper), nodeEth);
+            weth.forceApprove(address(etimPoolHelper), nodeEth);
             _distributeNodeRewards(etimPoolHelper.swapEthToEtim(nodeEth));
         }
         if (s2Eth > 0) {
-            weth.approve(address(etimPoolHelper), s2Eth);
+            weth.forceApprove(address(etimPoolHelper), s2Eth);
             uint256 s2Etim = etimPoolHelper.swapEthToEtim(s2Eth);
             _distributeS2PlusRewards(s2Etim);
         }
         if (s3Eth > 0) {
-            weth.approve(address(etimPoolHelper), s3Eth);
+            weth.forceApprove(address(etimPoolHelper), s3Eth);
             uint256 s3Etim = etimPoolHelper.swapEthToEtim(s3Eth);
             _distributeS3PlusRewards(s3Etim);
         }
@@ -358,11 +361,11 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         pendingSwapBurnEth += swapBurnEth - swapBurnInject;
 
         if (lpInject > 0) {
-            weth.approve(address(etimPoolHelper), lpInject);
+            weth.forceApprove(address(etimPoolHelper), lpInject);
             etimPoolHelper.swapAndAddLiquidity(lpInject);
         }
         if (swapBurnInject > 0) {
-            weth.approve(address(etimPoolHelper), swapBurnInject);
+            weth.forceApprove(address(etimPoolHelper), swapBurnInject);
             etimPoolHelper.swapAndBurn(swapBurnInject);
         }
     }
@@ -464,6 +467,12 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         uint256 startDay = user.lastClaimTime / 1 days * 1 days;
         uint256 endDay   = block.timestamp    / 1 days * 1 days;
+
+        // Cap loop iterations to prevent DoS when user hasn't claimed for a long time
+        uint256 maxDays = 365;
+        if ((endDay - startDay) / 1 days > maxDays) {
+            startDay = endDay - (maxDays * 1 days);
+        }
 
         uint256 rewardInEtim     = 0;
         uint256 initialRemaining = remainingValueInUsd;
@@ -1192,11 +1201,11 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
 
         if (lpAmount > 0) {
-            weth.approve(address(etimPoolHelper), lpAmount);
+            weth.forceApprove(address(etimPoolHelper), lpAmount);
             etimPoolHelper.swapAndAddLiquidity(lpAmount);
         }
         if (swapBurnAmount > 0) {
-            weth.approve(address(etimPoolHelper), swapBurnAmount);
+            weth.forceApprove(address(etimPoolHelper), swapBurnAmount);
             etimPoolHelper.swapAndBurn(swapBurnAmount);
         }
     }
@@ -1222,11 +1231,11 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
 
         if (lpAmount > 0) {
-            weth.approve(address(etimPoolHelper), lpAmount);
+            weth.forceApprove(address(etimPoolHelper), lpAmount);
             etimPoolHelper.swapAndAddLiquidity(lpAmount);
         }
         if (swapBurnAmount > 0) {
-            weth.approve(address(etimPoolHelper), swapBurnAmount);
+            weth.forceApprove(address(etimPoolHelper), swapBurnAmount);
             etimPoolHelper.swapAndBurn(swapBurnAmount);
         }
     }
@@ -1364,7 +1373,4 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     //                       HELPERS
     // =========================================================
 
-    function _isContract(address addr) private view returns (bool) {
-        return addr.code.length > 0;
-    }
 }

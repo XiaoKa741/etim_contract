@@ -72,8 +72,9 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
     //                    BUSINESS CONTRACT
     // =========================================================
 
-    address etimContract;
-    address mainContract;
+    address public etimContract;
+    address public mainContract;
+    address public wethAddress;  // BSC bridged ETH — for buy/sell direction detection
 
     // =========================================================
     //                    ACCESS CONTROL
@@ -131,11 +132,11 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
                 beforeRemoveLiquidity:         false,
                 afterRemoveLiquidity:          false,
                 beforeSwap:                    true,
-                afterSwap:                     true,
+                afterSwap:                     false,
                 beforeDonate:                  false,
                 afterDonate:                   false,
                 beforeSwapReturnDelta:         true,
-                afterSwapReturnDelta:          true,
+                afterSwapReturnDelta:          false,
                 afterAddLiquidityReturnDelta:  false,
                 afterRemoveLiquidityReturnDelta: false
             })
@@ -145,21 +146,6 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
     // =========================================================
     //                    CORE HOOK LOGIC
     // =========================================================
-
-    function _afterSwap(
-        address,
-        PoolKey calldata,
-        ICLPoolManager.SwapParams calldata,
-        BalanceDelta,
-        bytes calldata
-    )
-        internal
-        override
-        whenNotPaused
-        returns (bytes4, int128)
-    {
-        return (this.afterSwap.selector, 0);
-    }
 
     function _beforeSwap(
         address sender,
@@ -181,7 +167,11 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        bool isBuy = params.zeroForOne;
+        // Determine buy/sell direction: buy = user sends WETH, receives ETIM
+        // If WETH is currency0: zeroForOne=true means WETH→ETIM (buy)
+        // If WETH is currency1: zeroForOne=false means WETH→ETIM (buy)
+        bool wethIs0 = Currency.unwrap(key.currency0) == wethAddress;
+        bool isBuy = wethIs0 ? params.zeroForOne : !params.zeroForOne;
 
         // Buy disabled when growth pool is not depleted
         if (isBuy && !(IETIMMain(mainContract).isGrowthPoolDepleted())) revert BuyNotEnabled();
@@ -201,13 +191,17 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
         uint256 inAmount = uint256(-params.amountSpecified);
         uint256 taxAmount = (inAmount * taxBps) / BPS_DENOMINATOR;
 
+        // Determine which currency is WETH and which is ETIM
+        Currency wethCurr = wethIs0 ? key.currency0 : key.currency1;
+        Currency etimCurr = wethIs0 ? key.currency1 : key.currency0;
+
         if (isBuy) {
-            // Take native BNB/ETH tax via vault
-            vault.take(key.currency0, address(this), taxAmount);
+            // Take WETH tax from the input (WETH side)
+            vault.take(wethCurr, address(this), taxAmount);
             buyTax += taxAmount;
         } else {
-            // Take ETIM tax via vault
-            vault.take(key.currency1, address(this), taxAmount);
+            // Take ETIM tax from the input (ETIM side)
+            vault.take(etimCurr, address(this), taxAmount);
             uint256 toS6         = taxAmount / 6;
             uint256 toFoundation = taxAmount / 6;
             uint256 toOfficial   = taxAmount / 6;
@@ -259,6 +253,11 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
         mainContract = _mainContract;
     }
 
+    function setWethAddress(address _weth) external onlyOwner {
+        if (_weth == address(0)) revert ZeroAddress();
+        wethAddress = _weth;
+    }
+
     function flushS6ToMain(uint256 amount) external nonReentrant {
         if (msg.sender != mainContract) revert NotMainContract();
         if (mainContract == address(0) || etimContract == address(0)) revert InvalidParams();
@@ -290,13 +289,13 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
         IERC20(etimContract).safeTransfer(BURN_ADDRESS, amount);
     }
 
-    function withdrawBuyTax(address payable to) external onlyOwner nonReentrant {
+    function withdrawBuyTax(address to) external onlyOwner nonReentrant {
         if (to == address(0)) revert ZeroAddress();
+        if (wethAddress == address(0)) revert ZeroAddress();
         uint256 amount = buyTax;
         if (amount == 0) revert NothingToWithdraw();
         buyTax = 0;
-        (bool ok,) = to.call{value: amount}("");
-        if (!ok) revert TransferFailed();
+        IERC20(wethAddress).safeTransfer(to, amount);
     }
 
     function pause()   external onlyOwner { _pause(); }
@@ -336,7 +335,4 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
         return (buyTaxBps, sellTaxBps);
     }
 
-    // =========================================================
-
-    receive() external payable {}
 }

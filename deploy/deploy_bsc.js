@@ -154,6 +154,9 @@ async function deploy() {
     console.log("【池子HOOK合约】设置main合约", etimMainAddress);
     tx = await etimHook.setMainContract(etimMainAddress);
     await tx.wait();
+    console.log("【池子HOOK合约】设置WETH地址", WETH_ADDRESS);
+    tx = await etimHook.setWethAddress(WETH_ADDRESS);
+    await tx.wait();
 
     // ========== 部署总结 ==========
     console.log("\n" + "=".repeat(60));
