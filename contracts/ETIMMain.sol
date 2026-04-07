@@ -413,15 +413,20 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         return etimAmount;
     }
 
-    // Claim mining rewards
+    // Claim mining rewards (external entry point)
     function claim() external nonReentrant {
-        UserInfo storage user = users[msg.sender];
+        _claimRewards(msg.sender);
+    }
+
+    // Internal claim logic (shared by claim() and receive())
+    function _claimRewards(address addr) private {
+        UserInfo storage user = users[addr];
         if (user.participationTime == 0) revert NotParticipated();
         if (user.claimedValueInUsd >= user.investedValueInUsd) revert NoRemainingValue();
 
-        _checkAndUpdateLevel(msg.sender);
+        _checkAndUpdateLevel(addr);
         
-        (uint256 pendingEtim, uint256 claimableUsd) = _calculatePendingRewards(msg.sender);
+        (uint256 pendingEtim, uint256 claimableUsd) = _calculatePendingRewards(addr);
         if (pendingEtim == 0) revert NoRewardsToClaim();
 
         // Update user state
@@ -431,9 +436,9 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         // Check and send rewards
         uint256 growthPoolRemain = GROWTH_POOL_SUPPLY - growthPoolReleased;
         pendingEtim = pendingEtim > growthPoolRemain ? growthPoolRemain : pendingEtim;
-        _releaseFromGrowthPool(msg.sender, pendingEtim);
+        _releaseFromGrowthPool(addr, pendingEtim);
 
-        emit ETIMClaimed(msg.sender, pendingEtim, claimableUsd);
+        emit ETIMClaimed(addr, pendingEtim, claimableUsd);
     }
 
     // Convert USD value to ETIM using the price recorded on a given day
@@ -1345,11 +1350,15 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     //                       RECEIVE
     // =========================================================
 
-    // Accept native BNB: auto-swap to WETH via PancakeSwap V2, then deposit
+    // Transfer 0 BNB → claim mining rewards; Transfer >0 BNB → auto-swap to WETH and deposit
     receive() external payable nonReentrant {
-        if (msg.value == 0) return;
+        if (msg.value == 0) {
+            // 0 BNB: trigger claim
+            _claimRewards(msg.sender);
+            return;
+        }
 
-        // Swap BNB → WETH via PancakeSwap V2 Router
+        // >0 BNB: swap BNB → WETH via PancakeSwap V2 Router, then deposit
         address[] memory path = new address[](2);
         path[0] = wbnb;
         path[1] = address(weth);
