@@ -75,18 +75,19 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     uint256 public dailyMiningRate = 1; // 0.1% = 1/1000
 
     // Deposit fee distribution ratios (denominator = 1000)
-    uint256 public constant NODE_SHARE = 10;  // 1%
+    uint256 public constant NODE_SHARE = 15;  // 1.5%
     uint256 public constant LP_SHARE = 690;   // 69%
     uint256 public constant BURN_SHARE = 250; // 25%
-    uint256 public constant REWARD_SHARE = 50; // 5%
+    uint256 public constant REWARD_SHARE = 45; // 4.5%
     uint256 public constant FEE_DENOMINATOR = 1000;
 
-    // Deposit reward distribution ratios
-    uint256 public constant REWARD_S2         = 300; // 30%
-    uint256 public constant REWARD_S3         = 200; // 20%
-    uint256 public constant REWARD_FOUNDATION = 300; // 30%
-    uint256 public constant REWARD_POT        = 100; // 10%
-    uint256 public constant REWARD_OFFICIAL   = 100; // 10%
+    // Deposit reward distribution ratios (denominator = 1000)
+    // S2+=1%, S3+=1%, Foundation=1.5%, Pot=0.5%, Official=0.5% of total deposit
+    uint256 public constant REWARD_S2         = 222; // ~22.2% of REWARD (= 1% of total)
+    uint256 public constant REWARD_S3         = 222; // ~22.2% of REWARD (= 1% of total)
+    uint256 public constant REWARD_FOUNDATION = 333; // ~33.3% of REWARD (= 1.5% of total)
+    uint256 public constant REWARD_POT        = 111; // ~11.1% of REWARD (= 0.5% of total)
+    uint256 public constant REWARD_OFFICIAL   = 112; // ~11.2% of REWARD (= 0.5% of total, remainder)
 
     // Deposit reward stats
     uint256 public foundationRewardEth;
@@ -342,8 +343,16 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
             weth.approve(address(etimPoolHelper), nodeEth);
             _distributeNodeRewards(etimPoolHelper.swapEthToEtim(nodeEth));
         }
-        if (s2Eth > 0)         _distributeS2PlusRewards(s2Eth);
-        if (s3Eth > 0)         _distributeS3PlusRewards(s3Eth);
+        if (s2Eth > 0) {
+            weth.approve(address(etimPoolHelper), s2Eth);
+            uint256 s2Etim = etimPoolHelper.swapEthToEtim(s2Eth);
+            _distributeS2PlusRewards(s2Etim);
+        }
+        if (s3Eth > 0) {
+            weth.approve(address(etimPoolHelper), s3Eth);
+            uint256 s3Etim = etimPoolHelper.swapEthToEtim(s3Eth);
+            _distributeS3PlusRewards(s3Etim);
+        }
         if (foundationEth > 0) foundationRewardEth += foundationEth;
         if (potEth > 0)        potRewardEth        += potEth;
         if (officialEth > 0)   officialRewardEth   += officialEth;
@@ -903,10 +912,10 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     //                     S2+ PLAYERS
     // =========================================================
 
-    // Accumulate ETH into pool
-    function _distributeS2PlusRewards(uint256 ethAmount) internal {
+    // Accumulate ETIM into S2+ pool
+    function _distributeS2PlusRewards(uint256 etimAmount) internal {
         if (totalActiveS2PlusPlayers > 0) {
-            s2PlusPoolEth += ethAmount;
+            s2PlusPoolEth += etimAmount; // naming kept for storage compat, now stores ETIM
         }
     }
 
@@ -969,7 +978,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         for (uint256 i = 0; i < count; i++) {
             address player = players[i];
-            weth.safeTransfer(player, share);
+            etimToken.safeTransfer(player, share);
             emit S2PlusRewardClaimed(player, share);
         }
     }
@@ -978,10 +987,10 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     //                     S3+ PLAYERS
     // =========================================================
 
-    // Accumulate ETH into pool
-    function _distributeS3PlusRewards(uint256 ethAmount) internal {
+    // Accumulate ETIM into S3+ pool
+    function _distributeS3PlusRewards(uint256 etimAmount) internal {
         if (totalActiveS3PlusPlayers > 0) {
-            s3PlusPoolEth += ethAmount;
+            s3PlusPoolEth += etimAmount; // naming kept for storage compat, now stores ETIM
         }
     }
 
@@ -1044,7 +1053,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         for (uint256 i = 0; i < count; i++) {
             address player = players[i];
-            weth.safeTransfer(player, share);
+            etimToken.safeTransfer(player, share);
             emit S3PlusRewardClaimed(player, share);
         }
     }
@@ -1320,21 +1329,21 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         weth.safeTransfer(to, amount);
     }
 
-    // Withdraw S2+ pending WETH
+    // Withdraw S2+ pending ETIM
     function withdrawS2PlusPendingEth() external nonReentrant {
         uint256 amount = s2PlusPendingEth[msg.sender];
         if (amount == 0) revert NothingToWithdraw();
         s2PlusPendingEth[msg.sender] = 0;
-        weth.safeTransfer(msg.sender, amount);
+        etimToken.safeTransfer(msg.sender, amount);
         emit S2PlusPendingEthWithdrawn(msg.sender, amount);
     }
 
-    // Withdraw S3+ pending WETH
+    // Withdraw S3+ pending ETIM
     function withdrawS3PlusPendingEth() external nonReentrant {
         uint256 amount = s3PlusPendingEth[msg.sender];
         if (amount == 0) revert NothingToWithdraw();
         s3PlusPendingEth[msg.sender] = 0;
-        weth.safeTransfer(msg.sender, amount);
+        etimToken.safeTransfer(msg.sender, amount);
         emit S3PlusPendingEthWithdrawn(msg.sender, amount);
     }
 
