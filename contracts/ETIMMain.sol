@@ -119,17 +119,17 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     uint256 public nodeDistributionDust;        // carry-over remainder from integer division
     uint256 public totalActiveNodes;
 
-    // S2+ player reward tracking
-    uint256 public s2PlusPoolEth;               // ETH accumulated, pending push distribution
+    // S2+ player reward tracking (pull mode — accRewardPerShare pattern)
+    uint256 public s2PlusAccRewardPerShare;     // accumulated ETIM reward per active player (scaled by 1e18)
     uint256 public totalActiveS2PlusPlayers;
-    address[] public s2PlusPlayerList;          // all current S2+ players
-    mapping(address => uint256) private _s2PlusPlayerIdx; // 1-indexed, 0 = not in list
+    mapping(address => uint256) public s2PlusRewardDebt;     // user's settled accRewardPerShare snapshot
+    mapping(address => uint256) public s2PlusPendingReward;  // user's unclaimed ETIM reward
 
-    // S3+ player reward tracking
-    uint256 public s3PlusPoolEth;               // ETH accumulated, pending push distribution
+    // S3+ player reward tracking (pull mode — accRewardPerShare pattern)
+    uint256 public s3PlusAccRewardPerShare;     // accumulated ETIM reward per active player (scaled by 1e18)
     uint256 public totalActiveS3PlusPlayers;
-    address[] public s3PlusPlayerList;          // all current S3+ players
-    mapping(address => uint256) private _s3PlusPlayerIdx; // 1-indexed, 0 = not in list
+    mapping(address => uint256) public s3PlusRewardDebt;     // user's settled accRewardPerShare snapshot
+    mapping(address => uint256) public s3PlusPendingReward;  // user's unclaimed ETIM reward
 
     // S6 player reward tracking
     uint256 public totalActiveS6Players;
@@ -200,10 +200,7 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     uint256 public totalUsers;
     uint256 public totalDeposited;
 
-    // S2+ pending ETH withdrawals (push failed, pull to claim)
-    mapping(address => uint256) public s2PlusPendingEth;
-    // S3+ pending ETH withdrawals (push failed, pull to claim)
-    mapping(address => uint256) public s3PlusPendingEth;
+    
 
     // MODIFIERS
     modifier onlyEtimTokenOrOwner() {
@@ -220,10 +217,6 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     event S2PlusRewardClaimed(address indexed user, uint256 amount);
     event S3PlusRewardClaimed(address indexed user, uint256 amount);
     event S6RewardClaimed(address indexed user, uint256 amount);
-    event S2PlusEthTransferFailed(address indexed user, uint256 amount);
-    event S3PlusEthTransferFailed(address indexed user, uint256 amount);
-    event S2PlusPendingEthWithdrawn(address indexed user, uint256 amount);
-    event S3PlusPendingEthWithdrawn(address indexed user, uint256 amount);
     event LpBurnManualTriggered(address indexed caller, uint256 lpAmount, uint256 swapBurnAmount);
 
     constructor(
@@ -909,17 +902,29 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
     }
 
     // =========================================================
-    //                     S2+ PLAYERS
+    //                     S2+ PLAYERS (Pull Mode)
     // =========================================================
 
-    // Accumulate ETIM into S2+ pool
+    // Accumulate ETIM rewards — increases accRewardPerShare for all active S2+ players
     function _distributeS2PlusRewards(uint256 etimAmount) internal {
-        if (totalActiveS2PlusPlayers > 0) {
-            s2PlusPoolEth += etimAmount; // naming kept for storage compat, now stores ETIM
+        if (totalActiveS2PlusPlayers > 0 && etimAmount > 0) {
+            s2PlusAccRewardPerShare += (etimAmount * 1e18) / totalActiveS2PlusPlayers;
         }
     }
 
-    // Sync user's S2+ status and maintain player list
+    // Settle pending reward for a user based on current accRewardPerShare
+    function _settleS2PlusReward(address userAddr) private {
+        if (users[userAddr].s2PlusActive) {
+            uint256 acc = s2PlusAccRewardPerShare;
+            uint256 debt = s2PlusRewardDebt[userAddr];
+            if (acc > debt) {
+                s2PlusPendingReward[userAddr] += (acc - debt) / 1e18;
+            }
+        }
+        s2PlusRewardDebt[userAddr] = s2PlusAccRewardPerShare;
+    }
+
+    // Sync user's S2+ status — settle rewards before any state change
     function _syncUserS2PlusState(address userAddr) internal {
         UserInfo storage userInfo = users[userAddr];
         if (userInfo.participationTime == 0) return;
@@ -929,72 +934,71 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         if (wasActive == shouldBeActive) return;
 
+        // Settle before state change
+        _settleS2PlusReward(userAddr);
+
         if (shouldBeActive) {
-            s2PlusPlayerList.push(userAddr);
-            _s2PlusPlayerIdx[userAddr] = s2PlusPlayerList.length; // 1-indexed
             totalActiveS2PlusPlayers++;
             userInfo.s2PlusActive = true;
         } else {
-            _removeFromS2PlusList(userAddr);
             totalActiveS2PlusPlayers--;
             userInfo.s2PlusActive = false;
         }
-    }
 
-    // Removal from player list
-    function _removeFromS2PlusList(address userAddr) private {
-        uint256 idx = _s2PlusPlayerIdx[userAddr];
-        if (idx == 0) return;
-        uint256 lastIdx = s2PlusPlayerList.length;
-        if (idx != lastIdx) {
-            address last = s2PlusPlayerList[lastIdx - 1];
-            s2PlusPlayerList[idx - 1] = last;
-            _s2PlusPlayerIdx[last] = idx;
-        }
-        s2PlusPlayerList.pop();
-        delete _s2PlusPlayerIdx[userAddr];
+        // Reset debt to current acc so new state starts fresh
+        s2PlusRewardDebt[userAddr] = s2PlusAccRewardPerShare;
     }
 
     // Query claimable S2+ rewards (view)
     function getClaimableS2PlusRewards(address userAddr) external view returns (uint256) {
-        if (!users[userAddr].s2PlusActive || totalActiveS2PlusPlayers == 0) return 0;
-        return s2PlusPoolEth / totalActiveS2PlusPlayers;
+        uint256 pending = s2PlusPendingReward[userAddr];
+        if (users[userAddr].s2PlusActive) {
+            uint256 acc = s2PlusAccRewardPerShare;
+            uint256 debt = s2PlusRewardDebt[userAddr];
+            if (acc > debt) {
+                pending += (acc - debt) / 1e18;
+            }
+        }
+        return pending;
     }
 
-    // Any S2+ player triggers a full push distribution to all S2+ players
+    // User claims their own S2+ rewards (O(1) gas)
     function claimS2PlusRewards() external nonReentrant {
         _checkAndUpdateLevel(msg.sender);
-        if (!users[msg.sender].s2PlusActive) revert NotParticipated();
-        uint256 total = s2PlusPoolEth;
-        if (total == 0) revert NoRewardsToClaim();
+        _settleS2PlusReward(msg.sender);
 
-        address[] memory players = s2PlusPlayerList;
-        uint256 count = players.length;
+        uint256 amount = s2PlusPendingReward[msg.sender];
+        if (amount == 0) revert NoRewardsToClaim();
 
-        uint256 share = total / count;
-        s2PlusPoolEth = total - share * count; // dust accumulates
-
-        if (share == 0) revert NoRewardsToClaim();
-
-        for (uint256 i = 0; i < count; i++) {
-            address player = players[i];
-            etimToken.safeTransfer(player, share);
-            emit S2PlusRewardClaimed(player, share);
-        }
+        s2PlusPendingReward[msg.sender] = 0;
+        etimToken.safeTransfer(msg.sender, amount);
+        emit S2PlusRewardClaimed(msg.sender, amount);
     }
 
     // =========================================================
-    //                     S3+ PLAYERS
+    //                     S3+ PLAYERS (Pull Mode)
     // =========================================================
 
-    // Accumulate ETIM into S3+ pool
+    // Accumulate ETIM rewards — increases accRewardPerShare for all active S3+ players
     function _distributeS3PlusRewards(uint256 etimAmount) internal {
-        if (totalActiveS3PlusPlayers > 0) {
-            s3PlusPoolEth += etimAmount; // naming kept for storage compat, now stores ETIM
+        if (totalActiveS3PlusPlayers > 0 && etimAmount > 0) {
+            s3PlusAccRewardPerShare += (etimAmount * 1e18) / totalActiveS3PlusPlayers;
         }
     }
 
-    // Sync user's S3+ status and maintain player list
+    // Settle pending reward for a user based on current accRewardPerShare
+    function _settleS3PlusReward(address userAddr) private {
+        if (users[userAddr].s3PlusActive) {
+            uint256 acc = s3PlusAccRewardPerShare;
+            uint256 debt = s3PlusRewardDebt[userAddr];
+            if (acc > debt) {
+                s3PlusPendingReward[userAddr] += (acc - debt) / 1e18;
+            }
+        }
+        s3PlusRewardDebt[userAddr] = s3PlusAccRewardPerShare;
+    }
+
+    // Sync user's S3+ status — settle rewards before any state change
     function _syncUserS3PlusState(address userAddr) internal {
         UserInfo storage userInfo = users[userAddr];
         if (userInfo.participationTime == 0) return;
@@ -1004,58 +1008,45 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
 
         if (wasActive == shouldBeActive) return;
 
+        // Settle before state change
+        _settleS3PlusReward(userAddr);
+
         if (shouldBeActive) {
-            s3PlusPlayerList.push(userAddr);
-            _s3PlusPlayerIdx[userAddr] = s3PlusPlayerList.length; // 1-indexed
             totalActiveS3PlusPlayers++;
             userInfo.s3PlusActive = true;
         } else {
-            _removeFromS3PlusList(userAddr);
             totalActiveS3PlusPlayers--;
             userInfo.s3PlusActive = false;
         }
-    }
 
-    // Removal from player list
-    function _removeFromS3PlusList(address userAddr) private {
-        uint256 idx = _s3PlusPlayerIdx[userAddr];
-        if (idx == 0) return;
-        uint256 lastIdx = s3PlusPlayerList.length;
-        if (idx != lastIdx) {
-            address last = s3PlusPlayerList[lastIdx - 1];
-            s3PlusPlayerList[idx - 1] = last;
-            _s3PlusPlayerIdx[last] = idx;
-        }
-        s3PlusPlayerList.pop();
-        delete _s3PlusPlayerIdx[userAddr];
+        // Reset debt to current acc so new state starts fresh
+        s3PlusRewardDebt[userAddr] = s3PlusAccRewardPerShare;
     }
 
     // Query claimable S3+ rewards (view)
     function getClaimableS3PlusRewards(address userAddr) external view returns (uint256) {
-        if (!users[userAddr].s3PlusActive || totalActiveS3PlusPlayers == 0) return 0;
-        return s3PlusPoolEth / totalActiveS3PlusPlayers;
+        uint256 pending = s3PlusPendingReward[userAddr];
+        if (users[userAddr].s3PlusActive) {
+            uint256 acc = s3PlusAccRewardPerShare;
+            uint256 debt = s3PlusRewardDebt[userAddr];
+            if (acc > debt) {
+                pending += (acc - debt) / 1e18;
+            }
+        }
+        return pending;
     }
 
-    // Any S3+ player triggers a full push distribution to all S3+ players
+    // User claims their own S3+ rewards (O(1) gas)
     function claimS3PlusRewards() external nonReentrant {
         _checkAndUpdateLevel(msg.sender);
-        if (!users[msg.sender].s3PlusActive) revert NotParticipated();
-        uint256 total = s3PlusPoolEth;
-        if (total == 0) revert NoRewardsToClaim();
+        _settleS3PlusReward(msg.sender);
 
-        address[] memory players = s3PlusPlayerList;
-        uint256 count = players.length;
+        uint256 amount = s3PlusPendingReward[msg.sender];
+        if (amount == 0) revert NoRewardsToClaim();
 
-        uint256 share = total / count;
-        s3PlusPoolEth = total - share * count; // dust accumulates
-
-        if (share == 0) revert NoRewardsToClaim();
-
-        for (uint256 i = 0; i < count; i++) {
-            address player = players[i];
-            etimToken.safeTransfer(player, share);
-            emit S3PlusRewardClaimed(player, share);
-        }
+        s3PlusPendingReward[msg.sender] = 0;
+        etimToken.safeTransfer(msg.sender, amount);
+        emit S3PlusRewardClaimed(msg.sender, amount);
     }
 
     // =========================================================
@@ -1329,23 +1320,8 @@ contract ETIMMain is Ownable2Step, ReentrancyGuard {
         weth.safeTransfer(to, amount);
     }
 
-    // Withdraw S2+ pending ETIM
-    function withdrawS2PlusPendingEth() external nonReentrant {
-        uint256 amount = s2PlusPendingEth[msg.sender];
-        if (amount == 0) revert NothingToWithdraw();
-        s2PlusPendingEth[msg.sender] = 0;
-        etimToken.safeTransfer(msg.sender, amount);
-        emit S2PlusPendingEthWithdrawn(msg.sender, amount);
-    }
-
-    // Withdraw S3+ pending ETIM
-    function withdrawS3PlusPendingEth() external nonReentrant {
-        uint256 amount = s3PlusPendingEth[msg.sender];
-        if (amount == 0) revert NothingToWithdraw();
-        s3PlusPendingEth[msg.sender] = 0;
-        etimToken.safeTransfer(msg.sender, amount);
-        emit S3PlusPendingEthWithdrawn(msg.sender, amount);
-    }
+    // S2+/S3+ rewards are now claimed via claimS2PlusRewards() / claimS3PlusRewards() (pull mode)
+    // Old withdrawS2PlusPendingEth / withdrawS3PlusPendingEth removed
 
     // =========================================================
     //                       VIEWS
