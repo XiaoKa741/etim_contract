@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {ICLPoolManager} from "@pancakeswap/infinity-core/src/pool-cl/interfaces/ICLPoolManager.sol";
 import {IVault} from "@pancakeswap/infinity-core/src/interfaces/IVault.sol";
 import {ILockCallback} from "@pancakeswap/infinity-core/src/interfaces/ILockCallback.sol";
-import {CLPoolManagerLibrary} from "@pancakeswap/infinity-core/src/pool-cl/libraries/CLPoolManagerLibrary.sol";
+import {IHooks} from "@pancakeswap/infinity-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@pancakeswap/infinity-core/src/types/Currency.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -13,7 +13,7 @@ import {PoolId, PoolIdLibrary} from "@pancakeswap/infinity-core/src/types/PoolId
 import {TickMath} from "@pancakeswap/infinity-core/src/pool-cl/libraries/TickMath.sol";
 import {FullMath} from "@pancakeswap/infinity-core/src/pool-cl/libraries/FullMath.sol";
 import {CLPoolParametersHelper} from "@pancakeswap/infinity-core/src/pool-cl/libraries/CLPoolParametersHelper.sol";
-import {LiquidityAmounts} from "@pancakeswap/infinity-periphery/src/pool-cl/libraries/LiquidityAmounts.sol";
+import {LiquidityAmounts} from "./lib/LiquidityAmounts.sol";
 import {BalanceDelta} from "@pancakeswap/infinity-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@pancakeswap/infinity-core/src/interfaces/IHooks.sol";
 
@@ -28,7 +28,6 @@ interface AggregatorV3Interface {
 }
 
 /// @notice ETIM Pool Helper — manages WETH/ETIM pool on PancakeSwap V4 (BSC)
-/// Uses ERC-20 WETH (bridged ETH on BSC: 0x2170Ed0880ac9A755fd29B2688956BD959F933F8)
 contract ETIMPoolHelper is ILockCallback {
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
@@ -47,7 +46,7 @@ contract ETIMPoolHelper is ILockCallback {
 
     IVault                public immutable vault;
     ICLPoolManager        public immutable poolManager;
-    IERC20                public immutable weth;       // BSC bridged ETH (ERC-20)
+    IERC20                public immutable weth;        // BSC bridged ETH (ERC-20)
     IERC20                public immutable etim;
     IERC20                public immutable usdc;
     AggregatorV3Interface public immutable ethUsdFeed;  // Chainlink ETH/USD on BSC
@@ -175,7 +174,7 @@ contract ETIMPoolHelper is ILockCallback {
                 hooks:       IHooks(_hook),
                 poolManager: poolManager,
                 fee:         3000,
-                parameters:  bytes32(0).setTickSpacing(tickSpacing60)
+                parameters:  bytes32(uint256(0x0440)).setTickSpacing(tickSpacing60)  // hook flags: beforeSwap + beforeSwapReturnDelta
             });
             etimEthPoolId = etimEthPoolKey.toId();
         }
@@ -404,8 +403,8 @@ contract ETIMPoolHelper is ILockCallback {
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(data.tickLower),
-            TickMath.getSqrtPriceAtTick(data.tickUpper),
+            TickMath.getSqrtRatioAtTick(data.tickLower),
+            TickMath.getSqrtRatioAtTick(data.tickUpper),
             amt0,
             amt1
         );
@@ -435,7 +434,7 @@ contract ETIMPoolHelper is ILockCallback {
                 ICLPoolManager.SwapParams({
                     zeroForOne:        wethIsCurrency0,
                     amountSpecified:   -int256(data.ethAmount),
-                    sqrtPriceLimitX96: wethIsCurrency0 ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+                    sqrtPriceLimitX96: wethIsCurrency0 ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
                 }),
                 ""
             );
@@ -459,7 +458,7 @@ contract ETIMPoolHelper is ILockCallback {
                 ICLPoolManager.SwapParams({
                     zeroForOne:        !wethIsCurrency0,
                     amountSpecified:   -int256(data.etimAmount),
-                    sqrtPriceLimitX96: !wethIsCurrency0 ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+                    sqrtPriceLimitX96: !wethIsCurrency0 ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
                 }),
                 ""
             );
@@ -489,7 +488,7 @@ contract ETIMPoolHelper is ILockCallback {
             ICLPoolManager.SwapParams({
                 zeroForOne:        wethIsCurrency0,
                 amountSpecified:   -int256(swapEth),
-                sqrtPriceLimitX96: wethIsCurrency0 ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+                sqrtPriceLimitX96: wethIsCurrency0 ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
             }),
             ""
         );
@@ -513,8 +512,8 @@ contract ETIMPoolHelper is ILockCallback {
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(data.tickLower),
-            TickMath.getSqrtPriceAtTick(data.tickUpper),
+            TickMath.getSqrtRatioAtTick(data.tickLower),
+            TickMath.getSqrtRatioAtTick(data.tickUpper),
             amt0,
             amt1
         );
@@ -542,7 +541,7 @@ contract ETIMPoolHelper is ILockCallback {
             ICLPoolManager.SwapParams({
                 zeroForOne:        wethIsCurrency0,
                 amountSpecified:   -int256(data.ethAmount),
-                sqrtPriceLimitX96: wethIsCurrency0 ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+                sqrtPriceLimitX96: wethIsCurrency0 ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
             }),
             ""
         );

@@ -17,7 +17,7 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.BSC_RPC_URL || "https://bsc-dataseed1.binance.org",
+        url: process.env.BSC_RPC_URL || "https://bsc.publicnode.com",
         enabled: process.env.FORK === "true",
       },
       hardfork: "cancun",
@@ -28,7 +28,7 @@ module.exports = {
     },
     // BSC Testnet
     bscTestnet: {
-      url: process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545",
+      url: process.env.BSC_TESTNET_RPC_URL || "https://bsc-testnet-rpc.publicnode.com",
       chainId: 97,
       accounts: [
         process.env.PRIVATE_KEY,

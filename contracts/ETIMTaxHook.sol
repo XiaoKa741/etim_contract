@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {CLBaseHook} from "@pancakeswap/infinity-periphery/src/pool-cl/CLBaseHook.sol";
+import {CLBaseHook} from "./lib/CLBaseHook.sol";
 import {ICLPoolManager} from "@pancakeswap/infinity-core/src/pool-cl/interfaces/ICLPoolManager.sol";
 import {IVault} from "@pancakeswap/infinity-core/src/interfaces/IVault.sol";
 import {PoolKey} from "@pancakeswap/infinity-core/src/types/PoolKey.sol";
@@ -104,7 +104,7 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
     // =========================================================
 
     constructor(
-        ICLPoolManager _poolManager,
+        ICLPoolManager  _poolManager,
         address         _owner,
         uint256         _buyTaxBps,
         uint256         _sellTaxBps
@@ -166,6 +166,9 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
         if (isExempt[sender]) {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
+
+        // WETH address must be set for buy/sell direction detection
+        if (wethAddress == address(0)) revert ZeroAddress();
 
         // Determine buy/sell direction: buy = user sends WETH, receives ETIM
         // If WETH is currency0: zeroForOne=true means WETH→ETIM (buy)

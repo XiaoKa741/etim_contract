@@ -2,28 +2,29 @@ const { ethers } = require("hardhat");
 
 async function main() {
     // await deploy();
-    // await addLiquidity();
+    await addLiquidity();
     // await updateDailyPrice();
 }
 
 async function deploy() {
-    // BSC Mainnet addresses
-    const VAULT_ADDRESS           = "0x238a358808379702088667322f80aC48bAd5e6c4";
+    // BSC Mainnet addresses (fork 环境)
+    const VAULT_ADDRESS = "0x238a358808379702088667322f80aC48bAd5e6c4";
     const CL_POOL_MANAGER_ADDRESS = "0xa0FfB9c1CE1Fe56963B0321B32E7A0302114058b";
-    const WETH_ADDRESS            = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8"; // BSC bridged ETH
-    const USDC_ADDRESS            = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"; // BSC USDC
-    const CHAINLINK_ETH_USD       = "0x9ef1B8c0E4F7dc8bF5719Ea496883DC6401d5b2e"; // ETH/USD on BSC
-    const PANCAKE_ROUTER_V2       = "0x10ED43C718714eb63d5aA57B78B54704E256024E"; // PancakeSwap V2 Router
-    const WBNB_ADDRESS            = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"; // WBNB on BSC
-    const CREATE2_FACTORY         = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
+    const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";  // BSC bridged ETH
+    const USDC_ADDRESS = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"; // BSC USDC
+    const CHAINLINK_ETH_USD = "0x9ef1B8c0E4F7dc8bF5719Ea496883DC6401d5b2e"; // ETH/USD on BSC
+    const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E"; // PancakeSwap V2 Router
+    const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";   // WBNB on BSC
+    const CREATE2_FACTORY = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
 
     const [deployer] = await ethers.getSigners();
 
-    const marketInfra    = { address: "0xa9489529b893c13fa923e45d4c6cb20c913361d4" };
-    const ecoFund        = { address: "0x63BFB46f71757C23ef4352096800D9b916225c10" };
-    const communityFund  = { address: "0x3ed13128637f879858cF226ab1ca245C2F8B8eE3" };
-    const airdrop        = { address: "0xE2f8245BddA6d8F1AB49d75dA6960F2cD1a3Bc13" };
-    const bnbFoundation  = { address: "0x9fc3dc011b461664c835f2527fffb1169b3c213e" };
+    // fork 环境测试用的钱包地址
+    const marketInfra    = { address: deployer.address };
+    const ecoFund        = { address: deployer.address };
+    const communityFund  = { address: deployer.address };
+    const airdrop        = { address: deployer.address };
+    const bnbFoundation  = { address: deployer.address };
 
     console.log("部署者地址:", deployer.address);
     console.log("部署者余额:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "BNB");
@@ -31,8 +32,15 @@ async function deploy() {
     const network = await deployer.provider.getNetwork();
     console.log("当前部署网络 ChainID:", network.chainId);
 
+    // 检查 fork 环境中的关键合约
+    let code = await ethers.provider.getCode(VAULT_ADDRESS);
+    if (code === "0x") throw new Error("错误：VAULT 不存在，请确认 fork 正确");
+    code = await ethers.provider.getCode(CL_POOL_MANAGER_ADDRESS);
+    if (code === "0x") throw new Error("错误：CL_POOL_MANAGER 不存在，请确认 fork 正确");
+    code = await ethers.provider.getCode(CREATE2_FACTORY);
+    if (code === "0x") throw new Error("错误：CREATE2_FACTORY 不存在");
+
     // ========== 搜索满足 Hook flags 的 CREATE2 salt ==========
-    // Hook flags: beforeSwap (bit 6) + beforeSwapReturnDelta (bit 10) = 0x0440
     console.log("\n🔍 搜索满足 Hook flags 的 CREATE2 salt...");
     const hookFactory = await ethers.getContractFactory("ETIMTaxHook");
     const initCode = hookFactory.bytecode + ethers.AbiCoder.defaultAbiCoder().encode(
@@ -44,7 +52,7 @@ async function deploy() {
     let foundSalt = null;
     let hookAddress = null;
 
-    for (let salt = 51586n; salt < 1000000n; salt++) {
+    for (let salt = 0n; salt < 1000000n; salt++) {
         const saltHex = ethers.zeroPadValue(ethers.toBeHex(salt), 32);
         const predicted = ethers.getCreate2Address(CREATE2_FACTORY, saltHex, initCodeHash);
         if ((BigInt(predicted) & 0x3FFFn) === 0x0440n) {
@@ -171,12 +179,7 @@ async function deploy() {
     };
     const Q96 = 2n ** 96n;
     const priceEtimPerEth = 500000n; // 1 ETH = 500000 ETIM
-    // sqrtPriceX96 = sqrt(token1/token0) * 2^96
-    // If WETH < ETIM (address order): currency0=WETH, currency1=ETIM, price=ETIM/WETH=500000
-    // If ETIM < WETH (address order): currency0=ETIM, currency1=WETH, price=WETH/ETIM=1/500000
-    const wethAddr = BigInt(WETH_ADDRESS);
-    const etimAddr = BigInt(etimTokenAddress);
-    const sqrtPriceX96 = wethAddr < etimAddr ? sqrtBigInt(priceEtimPerEth * Q96 * Q96) : sqrtBigInt(Q96 * Q96 / priceEtimPerEth);
+    const sqrtPriceX96 = sqrtBigInt(priceEtimPerEth * Q96 * Q96);
     tx = await etimPool.initializePool(sqrtPriceX96);
     await tx.wait();
     console.log("【池子HELPER合约】初始化池子价格WETH/ETIM");
@@ -199,7 +202,7 @@ async function deploy() {
 
     // ========== 部署总结 ==========
     console.log("\n" + "=".repeat(60));
-    console.log("BSC 部署完成！合约地址汇总:");
+    console.log("BSC Fork 本地部署完成！合约地址汇总:");
     console.log("=".repeat(60));
     console.log("ETIMToken      :", etimTokenAddress);
     console.log("ETIMNode       :", etimNodeAddress);
@@ -213,25 +216,69 @@ async function addLiquidity() {
     console.log("添加流动性 ETIM/WETH...");
 
     const [deployer] = await ethers.getSigners();
-    const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
+    const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";  // BSC bridged ETH (ERC20)
+    const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";  // WBNB
+    const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 
-    const ETIMTokenAddress = ""; // 替换为实际地址
-    const ETIMPoolAddress = ""; // 替换为实际地址
+    const ETIMTokenAddress = "0xCC2C1eB57bc4da75587fB513d7b1f20c62b9C863";
+    const ETIMPoolAddress = "0xE2B0ec1D2bdb23431865534e1BCffd8845F5D3B4";
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
     const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
 
-    let tx = await etimToken.connect(deployer).approve(ETIMPoolAddress, ethers.MaxInt256);
-    await tx.wait();
-    tx = await weth.connect(deployer).approve(ETIMPoolAddress, ethers.MaxInt256);
-    await tx.wait();
+    // 检查当前余额
+    const bnbBalance = await ethers.provider.getBalance(deployer.address);
+    const wethBalance = await weth.balanceOf(deployer.address);
+    const etimBalance = await etimToken.balanceOf(deployer.address);
+    console.log("BNB 余额:", ethers.formatEther(bnbBalance));
+    console.log("WETH 余额:", ethers.formatEther(wethBalance));
+    console.log("ETIM 余额:", ethers.formatEther(etimBalance));
 
+    // 通过 PancakeSwap 将 BNB 换成 WETH
+    const bnbToSwap = ethers.parseEther("1000");
+    console.log("\n通过 PancakeSwap 将", ethers.formatEther(bnbToSwap), "BNB 换成 WETH...");
+
+    const ROUTER_ABI = [
+        "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)",
+        "function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)"
+    ];
+    const router = new ethers.Contract(PANCAKE_ROUTER_V2, ROUTER_ABI, deployer);
+
+    // 计算预期输出
+    const path = [WBNB_ADDRESS, WETH_ADDRESS];
+    const amounts = await router.getAmountsOut(bnbToSwap, path);
+    const expectedWeth = amounts[1];
+    console.log("预期获得 WETH:", ethers.formatEther(expectedWeth));
+
+    // 执行交换
+    const block = await ethers.provider.getBlock("latest");
+    const deadline = block.timestamp + 60 * 20;  // 区块时间 + 20分钟（fork 环境必须用区块时间）
+    let tx = await router.swapExactETHForTokens(
+        0,  // 接受任何数量（测试环境）
+        path,
+        deployer.address,
+        deadline,
+        { value: bnbToSwap }
+    );
+    await tx.wait();
+    console.log("WETH 余额:", ethers.formatEther(await weth.balanceOf(deployer.address)));
+
+    // 授权
+    tx = await etimToken.approve(ETIMPoolAddress, ethers.MaxInt256);
+    await tx.wait();
+    tx = await weth.approve(ETIMPoolAddress, ethers.MaxInt256);
+    await tx.wait();
+    console.log("授权完成");
+
+    // 添加流动性
     const ethAmount = ethers.parseEther("0.1");
-    const etimAmount = ethers.parseEther("100");
-    tx = await etimPool.connect(deployer).addLiquidity(ethAmount, etimAmount);
+    const etimAmount = ethers.parseEther("50000");  // 1 ETH = 500000 ETIM
+    console.log("\n添加流动性:", ethers.formatEther(ethAmount), "WETH,", ethers.formatEther(etimAmount), "ETIM");
+    tx = await etimPool.addLiquidity(ethAmount, etimAmount);
     await tx.wait();
 
     console.log("🆗流动性添加完成");
+    console.log("池子内WETH余量:", ethers.formatEther(await etimPool.getEthReserves()));
 }
 
 async function updateDailyPrice() {
