@@ -58,7 +58,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
 
     // Other contract
     IERC20          public etimToken;
-    IERC20          public weth;        // BSC bridged ETH (ERC-20)
+    IERC20          public weth;            // BSC bridged ETH (ERC-20)
     IERC721         public etimNode;
     IETIMPoolHelper public etimPoolHelper;
     address         public etimTaxHook;
@@ -76,14 +76,13 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     uint256 public dailyMiningRate = 1; // 0.1% = 1/1000
 
     // Deposit fee distribution ratios (denominator = 1000)
-    uint256 public constant NODE_SHARE = 15;  // 1.5%
-    uint256 public constant LP_SHARE = 690;   // 69%
-    uint256 public constant BURN_SHARE = 250; // 25%
-    uint256 public constant REWARD_SHARE = 45; // 4.5%
+    uint256 public constant NODE_SHARE      = 15;  // 1.5%
+    uint256 public constant LP_SHARE        = 690; // 69%
+    uint256 public constant BURN_SHARE      = 250; // 25%
+    uint256 public constant REWARD_SHARE    = 45;  // 4.5%
     uint256 public constant FEE_DENOMINATOR = 1000;
 
     // Deposit reward distribution ratios (denominator = 1000)
-    // S2+=1%, S3+=1%, Foundation=1.5%, Pot=0.5%, Official=0.5% of total deposit
     uint256 public constant REWARD_S2         = 222; // ~22.2% of REWARD (= 1% of total)
     uint256 public constant REWARD_S3         = 222; // ~22.2% of REWARD (= 1% of total)
     uint256 public constant REWARD_FOUNDATION = 333; // ~33.3% of REWARD (= 1.5% of total)
@@ -95,9 +94,8 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     uint256 public potRewardEth;
     uint256 public officialRewardEth;
 
-    // Team depth & S0 acceleration
-    uint256 public maxTeamDepth       = 20;  // max recursion depth for team balance propagation (owner adjustable)
-    uint256 public s0AccelerationRate = 100; // S0 acceleration: direct referrals daily output * rate / 1000 (default 10%)
+    // Team depth
+    uint256 public maxTeamDepth = 20;  // max recursion depth for team balance propagation (owner adjustable)
 
     // Branch token balance: total tokens held by user + ALL their downstream (for big/small zone calc)
     mapping(address => uint256) public branchTokenBalance;
@@ -134,7 +132,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
 
     // S6 player reward tracking
     uint256 public totalActiveS6Players;
-    address[] public s6PlayerList;              // all current S6 players
+    address[] public s6PlayerList;                    // all current S6 players
     mapping(address => uint256) private _s6PlayerIdx; // 1-indexed, 0 = not in list
 
     // User info
@@ -250,6 +248,9 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         wbnb           = _wbnb;
 
         _initializeLevelConditions();
+
+        // Approve PoolHelper to spend all WETH (one-time, saves gas on each deposit)
+        weth.forceApprove(address(etimPoolHelper), type(uint256).max);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
@@ -330,8 +331,8 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
 
     // Allocate WETH: node/reward immediate; LP(69%) + burn(25%) rate-limited via pending
     function _allocateDepositFunds(uint256 ethAmount) private {
-        uint256 nodeEth     = (ethAmount * NODE_SHARE) / FEE_DENOMINATOR;
-        uint256 lpEth       = (ethAmount * LP_SHARE)   / FEE_DENOMINATOR;
+        uint256 nodeEth     = (ethAmount * NODE_SHARE)  / FEE_DENOMINATOR;
+        uint256 lpEth       = (ethAmount * LP_SHARE)    / FEE_DENOMINATOR;
         uint256 swapBurnEth = (ethAmount * BURN_SHARE)  / FEE_DENOMINATOR;
         uint256 rewardEth   = ethAmount - nodeEth - lpEth - swapBurnEth;
 
@@ -341,29 +342,10 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         uint256 potEth        = rewardEth * REWARD_POT        / FEE_DENOMINATOR;
         uint256 officialEth   = rewardEth - s2Eth - s3Eth - foundationEth - potEth;
 
-        // Overflow: no active nodes/S2+/S3+ → surplus into LP pending (rate-limited together)
+        // No active nodes/S2+/S3+ → surplus into LP pending (rate-limited together)
         if (totalActiveNodes == 0)         { lpEth += nodeEth; nodeEth = 0; }
         if (totalActiveS2PlusPlayers == 0) { lpEth += s2Eth;   s2Eth   = 0; }
         if (totalActiveS3PlusPlayers == 0) { lpEth += s3Eth;   s3Eth   = 0; }
-
-        // Immediate distributions (approve WETH to PoolHelper for swap operations)
-        if (nodeEth > 0) {
-            weth.forceApprove(address(etimPoolHelper), nodeEth);
-            _distributeNodeRewards(etimPoolHelper.swapEthToEtim(nodeEth));
-        }
-        if (s2Eth > 0) {
-            weth.forceApprove(address(etimPoolHelper), s2Eth);
-            uint256 s2Etim = etimPoolHelper.swapEthToEtim(s2Eth);
-            _distributeS2PlusRewards(s2Etim);
-        }
-        if (s3Eth > 0) {
-            weth.forceApprove(address(etimPoolHelper), s3Eth);
-            uint256 s3Etim = etimPoolHelper.swapEthToEtim(s3Eth);
-            _distributeS3PlusRewards(s3Etim);
-        }
-        if (foundationEth > 0) foundationRewardEth += foundationEth;
-        if (potEth > 0)        potRewardEth        += potEth;
-        if (officialEth > 0)   officialRewardEth   += officialEth;
 
         // LP + burn: player deposits always inject the ratio portion immediately (no cooldown)
         uint256 lpInject       = lpEth       * lpBurnAutoRatio / FEE_DENOMINATOR;
@@ -372,12 +354,26 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         pendingLpEth       += lpEth       - lpInject;
         pendingSwapBurnEth += swapBurnEth - swapBurnInject;
 
+        // Immediate distributions
+        if (nodeEth > 0) {
+            _distributeNodeRewards(etimPoolHelper.swapEthToEtim(nodeEth));
+        }
+        if (s2Eth > 0) {
+            uint256 s2Etim = etimPoolHelper.swapEthToEtim(s2Eth);
+            _distributeS2PlusRewards(s2Etim);
+        }
+        if (s3Eth > 0) {
+            uint256 s3Etim = etimPoolHelper.swapEthToEtim(s3Eth);
+            _distributeS3PlusRewards(s3Etim);
+        }
+        if (foundationEth > 0) foundationRewardEth += foundationEth;
+        if (potEth > 0)        potRewardEth        += potEth;
+        if (officialEth > 0)   officialRewardEth   += officialEth;
+
         if (lpInject > 0) {
-            weth.forceApprove(address(etimPoolHelper), lpInject);
             etimPoolHelper.swapAndAddLiquidity(lpInject);
         }
         if (swapBurnInject > 0) {
-            weth.forceApprove(address(etimPoolHelper), swapBurnInject);
             etimPoolHelper.swapAndBurn(swapBurnInject);
         }
     }
@@ -391,7 +387,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     // Manual sync team token balance (recalculates full branch tree)
     function syncTeamBalance() external {
         uint256 selfBalance = etimToken.balanceOf(msg.sender);
-        (uint256 totalTeam, uint256 totalBranch) = _recalcBranch(msg.sender, 0);
+        (uint256 totalTeam, ) = _recalcBranch(msg.sender, 0);
         users[msg.sender].teamTokenBalance = totalTeam;
         branchTokenBalance[msg.sender] = selfBalance + totalTeam;
         _checkAndUpdateLevel(msg.sender);
@@ -514,18 +510,18 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     }
 
     /// @notice Calculate acceleration bonus ETIM for a user on a given day
-    /// S0: direct referrals' daily ETIM output * s0AccelerationRate / 1000
+    /// S0: direct referrals' daily ETIM output * accelerationRate / 100
     /// S1-S6: small zone downstream daily ETIM output * accelerationRate / 100
     function _calculateAccelerationBonus(address userAddr, uint8 level, uint256 day) private view returns (uint256 bonusEtim) {
+        uint256 accelerationRate = levelConditions[level].accelerationRate;
+        if (accelerationRate == 0) return 0;
+
         if (level == 0) {
             // S0: bonus from direct referrals' daily output
-            if (s0AccelerationRate == 0) return 0;
             uint256 totalDirectDailyEtim = _getDirectReferralsDailyEtim(userAddr, day);
-            bonusEtim = (totalDirectDailyEtim * s0AccelerationRate) / 1000;
+            bonusEtim = (totalDirectDailyEtim * accelerationRate) / 100;
         } else {
             // S1-S6: bonus from small zone downstream daily output
-            uint256 accelerationRate = levelConditions[level].accelerationRate;
-            if (accelerationRate == 0) return 0;
             uint256 smallZoneDailyEtim = _getSmallZoneDailyEtim(userAddr, day);
             bonusEtim = (smallZoneDailyEtim * accelerationRate) / 100;
         }
@@ -1213,11 +1209,9 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
 
         if (lpAmount > 0) {
-            weth.forceApprove(address(etimPoolHelper), lpAmount);
             etimPoolHelper.swapAndAddLiquidity(lpAmount);
         }
         if (swapBurnAmount > 0) {
-            weth.forceApprove(address(etimPoolHelper), swapBurnAmount);
             etimPoolHelper.swapAndBurn(swapBurnAmount);
         }
     }
@@ -1243,11 +1237,9 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         emit LpBurnManualTriggered(msg.sender, lpAmount, swapBurnAmount);
 
         if (lpAmount > 0) {
-            weth.forceApprove(address(etimPoolHelper), lpAmount);
             etimPoolHelper.swapAndAddLiquidity(lpAmount);
         }
         if (swapBurnAmount > 0) {
-            weth.forceApprove(address(etimPoolHelper), swapBurnAmount);
             etimPoolHelper.swapAndBurn(swapBurnAmount);
         }
     }
@@ -1289,10 +1281,6 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     function setMaxTeamDepth(uint256 depth) external onlyOwner {
         if (depth == 0) revert InvalidParams();
         maxTeamDepth = depth;
-    }
-
-    function setS0AccelerationRate(uint256 rate) external onlyOwner {
-        s0AccelerationRate = rate;
     }
 
     function setDailyDepositRate(uint256 rate) external onlyOwner {

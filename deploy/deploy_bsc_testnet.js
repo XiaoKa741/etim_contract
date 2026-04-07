@@ -1,4 +1,4 @@
-const { ethers, upgrades } = require("hardhat");
+const { ethers } = require("hardhat");
 
 async function main() {
     // await deploy();
@@ -7,29 +7,52 @@ async function main() {
 }
 
 async function deploy() {
-    // BSC Mainnet addresses
-    const VAULT_ADDRESS           = "0x238a358808379702088667322f80aC48bAd5e6c4";
-    const CL_POOL_MANAGER_ADDRESS = "0xa0FfB9c1CE1Fe56963B0321B32E7A0302114058b";
-    const WETH_ADDRESS            = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8"; // BSC bridged ETH
-    const USDC_ADDRESS            = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"; // BSC USDC
-    const CHAINLINK_ETH_USD       = "0x9ef1B8c0E4F7dc8bF5719Ea496883DC6401d5b2e"; // ETH/USD on BSC
-    const PANCAKE_ROUTER_V2       = "0x10ED43C718714eb63d5aA57B78B54704E256024E"; // PancakeSwap V2 Router
-    const WBNB_ADDRESS            = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"; // WBNB on BSC
-    const CREATE2_FACTORY         = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
+    // BSC Testnet addresses (需要确认 PancakeSwap V4 是否已部署)
+    // 如果 V4 未部署，需要先部署 Vault 和 CLPoolManager
+
+    const VAULT_ADDRESS = "";           // TODO: PancakeSwap V4 Vault on BSC Testnet
+    const CL_POOL_MANAGER_ADDRESS = ""; // TODO: PancakeSwap V4 CLPoolManager on BSC Testnet
+    const WETH_ADDRESS = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";  // WBNB on BSC Testnet (作为 ETH 等价物)
+    const USDC_ADDRESS = "0x64544969ed7EBf5f083679233325356EbE738930";  // USDC on BSC Testnet (如有)
+    const CHAINLINK_ETH_USD = "0x2514895c72f50D8bd4B4F9b1110F0D6bD2c97526"; // BNB/USD on BSC Testnet
+    const PANCAKE_ROUTER_V2 = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1"; // PancakeSwap V2 Router on BSC Testnet
+    const WBNB_ADDRESS = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";   // WBNB on BSC Testnet
+    const CREATE2_FACTORY = "0x4e59b44847b379578588920cA78FbF26c0B4956C"; // 需确认 testnet 是否已部署
 
     const [deployer] = await ethers.getSigners();
 
-    const marketInfra    = { address: "0xa9489529b893c13fa923e45d4c6cb20c913361d4" };
-    const ecoFund        = { address: "0x63BFB46f71757C23ef4352096800D9b916225c10" };
-    const communityFund  = { address: "0x3ed13128637f879858cF226ab1ca245C2F8B8eE3" };
-    const airdrop        = { address: "0xE2f8245BddA6d8F1AB49d75dA6960F2cD1a3Bc13" };
-    const bnbFoundation  = { address: "0x9fc3dc011b461664c835f2527fffb1169b3c213e" };
+    // 测试用的钱包地址 (使用部署者地址)
+    const marketInfra    = { address: deployer.address };
+    const ecoFund        = { address: deployer.address };
+    const communityFund  = { address: deployer.address };
+    const airdrop        = { address: deployer.address };
+    const bnbFoundation  = { address: deployer.address };
 
     console.log("部署者地址:", deployer.address);
     console.log("部署者余额:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "BNB");
 
     const network = await deployer.provider.getNetwork();
     console.log("当前部署网络 ChainID:", network.chainId);
+
+    // 检查 PancakeSwap V4 地址
+    if (!VAULT_ADDRESS || !CL_POOL_MANAGER_ADDRESS) {
+        console.log("\n⚠️  警告: PancakeSwap V4 地址未配置!");
+        console.log("请先确认 PancakeSwap V4 是否已部署在 BSC Testnet 上。");
+        console.log("如果未部署，需要先部署以下合约:");
+        console.log("  - Vault");
+        console.log("  - CLPoolManager");
+        console.log("\n或者使用 local fork 测试。");
+        return;
+    }
+
+    // 检查 CREATE2 Factory
+    const create2Code = await ethers.provider.getCode(CREATE2_FACTORY);
+    if (create2Code === "0x") {
+        console.log("\n⚠️  警告: CREATE2 Factory 未部署在 BSC Testnet!");
+        console.log("地址: " + CREATE2_FACTORY);
+        console.log("请先部署 CREATE2 Factory 或使用其他方式部署 Hook。");
+        return;
+    }
 
     // ========== 搜索满足 Hook flags 的 CREATE2 salt ==========
     // Hook flags: beforeSwap (bit 6) + beforeSwapReturnDelta (bit 10) = 0x0440
@@ -95,29 +118,26 @@ async function deploy() {
     console.log("税收HOOK合约验证 buyTaxBps:", await etimHook.buyTaxBps());
     console.log("税收HOOK合约验证 sellTaxBps:", await etimHook.sellTaxBps());
 
-    // ========== 部署WETH/ETIM代币池合约 (UUPS Proxy) ==========
-    console.log("\n🆗. 部署WETH/ETIM代币池合约 (UUPS Proxy)...");
+    // ========== 部署WETH/ETIM代币池合约 ==========
+    console.log("\n🆗. 部署WETH/ETIM代币池合约...");
     const ETIMPool = await ethers.getContractFactory("ETIMPoolHelper");
-    const etimPool = await upgrades.deployProxy(ETIMPool, [hookAddress], {
-        kind: 'uups',
-        constructorArgs: [
-            VAULT_ADDRESS,
-            CL_POOL_MANAGER_ADDRESS,
-            WETH_ADDRESS,
-            etimTokenAddress,
-            USDC_ADDRESS,
-            CHAINLINK_ETH_USD,
-        ],
-        unsafeAllow: ['constructor'],
-    });
+    const etimPool = await ETIMPool.deploy(
+        VAULT_ADDRESS,
+        CL_POOL_MANAGER_ADDRESS,
+        WETH_ADDRESS,
+        etimTokenAddress,
+        USDC_ADDRESS,
+        hookAddress,
+        CHAINLINK_ETH_USD,
+    );
     await etimPool.waitForDeployment();
     const etimPoolAddress = await etimPool.getAddress();
-    console.log("池子HELPER合约地址 (Proxy):", etimPoolAddress);
+    console.log("池子HELPER合约地址:", etimPoolAddress);
 
-    // ========== 部署主合约 (UUPS Proxy) ==========
-    console.log("\n🆗. 部署ETIM主合约 (UUPS Proxy)...");
+    // ========== 部署主合约 ==========
+    console.log("\n🆗. 部署ETIM主合约...");
     const ETIMMain = await ethers.getContractFactory("ETIMMain");
-    const etimMain = await upgrades.deployProxy(ETIMMain, [
+    const etimMain = await ETIMMain.deploy(
         etimTokenAddress,
         WETH_ADDRESS,
         etimNodeAddress,
@@ -125,10 +145,10 @@ async function deploy() {
         hookAddress,
         PANCAKE_ROUTER_V2,
         WBNB_ADDRESS,
-    ], { kind: 'uups' });
+    );
     await etimMain.waitForDeployment();
     const etimMainAddress = await etimMain.getAddress();
-    console.log("主合约地址 (Proxy):", etimMainAddress);
+    console.log("主合约地址:", etimMainAddress);
 
     // ========== 分配代币（总量 100,000,000 ETIM）==========
     console.log("\n🆗. 分配代币...");
@@ -174,12 +194,7 @@ async function deploy() {
     };
     const Q96 = 2n ** 96n;
     const priceEtimPerEth = 500000n; // 1 ETH = 500000 ETIM
-    // sqrtPriceX96 = sqrt(token1/token0) * 2^96
-    // If WETH < ETIM (address order): currency0=WETH, currency1=ETIM, price=ETIM/WETH=500000
-    // If ETIM < WETH (address order): currency0=ETIM, currency1=WETH, price=WETH/ETIM=1/500000
-    const wethAddr = BigInt(WETH_ADDRESS);
-    const etimAddr = BigInt(etimTokenAddress);
-    const sqrtPriceX96 = wethAddr < etimAddr ? sqrtBigInt(priceEtimPerEth * Q96 * Q96) : sqrtBigInt(Q96 * Q96 / priceEtimPerEth);
+    const sqrtPriceX96 = sqrtBigInt(priceEtimPerEth * Q96 * Q96);
     tx = await etimPool.initializePool(sqrtPriceX96);
     await tx.wait();
     console.log("【池子HELPER合约】初始化池子价格WETH/ETIM");
@@ -202,7 +217,7 @@ async function deploy() {
 
     // ========== 部署总结 ==========
     console.log("\n" + "=".repeat(60));
-    console.log("BSC 部署完成！合约地址汇总:");
+    console.log("BSC Testnet 部署完成！合约地址汇总:");
     console.log("=".repeat(60));
     console.log("ETIMToken      :", etimTokenAddress);
     console.log("ETIMNode       :", etimNodeAddress);
@@ -216,7 +231,7 @@ async function addLiquidity() {
     console.log("添加流动性 ETIM/WETH...");
 
     const [deployer] = await ethers.getSigners();
-    const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
+    const WETH_ADDRESS = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd";
 
     const ETIMTokenAddress = ""; // 替换为实际地址
     const ETIMPoolAddress = ""; // 替换为实际地址
@@ -230,7 +245,7 @@ async function addLiquidity() {
     await tx.wait();
 
     const ethAmount = ethers.parseEther("0.1");
-    const etimAmount = ethers.parseEther("100");
+    const etimAmount = ethers.parseEther("50000"); // 1 ETH = 500000 ETIM
     tx = await etimPool.connect(deployer).addLiquidity(ethAmount, etimAmount);
     await tx.wait();
 

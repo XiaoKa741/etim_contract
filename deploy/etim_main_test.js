@@ -2,11 +2,11 @@
 const { ethers } = require("hardhat");
 
 // forking
-const ETIMMainAddress = '0xe858D94ac68f48fc6d99f333204c8160785B4723';
-const ETIMTokenAddress = '0xb28C1C983Bb584cA4Ff3D9F381Cb23fC5bF0392A';
-const ETIMNodeAddress = '0xCfbCFd6A1847D919aCcb2861957EC54d1BffdA61';
-const ETIMPoolAddress = '0xd51e4Cc6e7891437B6dE33e5196AD206BC6065BA';
-const ETIMHookAddress = '0x626a8aa862d6a568cA92c9207709c9cba1f5C0Cc';
+const ETIMMainAddress = '0x4457eEb3f3E0AB10B1340aCb7818fF2838E3B41b';
+const ETIMTokenAddress = '0xCC2C1eB57bc4da75587fB513d7b1f20c62b9C863';
+const ETIMNodeAddress = '0x308B07DA84DBafAA4CA862ce7EB85FA013f832D6';
+const ETIMPoolAddress = '0xE2B0ec1D2bdb23431865534e1BCffd8845F5D3B4';
+const ETIMHookAddress = '0xf0e19D44989F5C9E3F3c993AaA9D4Ff9f17c8440';
 const Permit2Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const PositionManagerAddress = '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e';
 const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
@@ -18,7 +18,8 @@ async function main() {
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
     const etimTaxHook = await ethers.getContractAt("ETIMTaxHook", ETIMHookAddress);
 
-    const [deployer, a, b, c, d, e, f] = await ethers.getSigners();
+    // const [deployer, a, b, c, d, e, f] = await ethers.getSigners();
+    const [a, b, c, d, e, f] = await ethers.getSigners();
 
     let tx = await etimToken.approve(ETIMPoolAddress, ethers.MaxInt256);
     await tx.wait();
@@ -30,8 +31,14 @@ async function main() {
 
     await getEtimTaxHookStatus(etimTaxHook);
 
-    tx = await etimMain.updateDailyPrice();
-    await tx.wait();
+    // tx = await etimMain.updateDailyPrice();
+    // await tx.wait();
+
+    // tx = await etimMain.setDailyDepositRate(1000);
+    // await tx.wait();
+    // tx = await etimMain.setDailyDepositLimit(ethers.parseEther("10"));
+    // await tx.wait();
+
     // console.log('etim per eth: ', ethers.formatEther(await etimMain.ethPriceInEtim()));
     // console.log('usdc per eth: ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
 
@@ -87,8 +94,8 @@ async function main() {
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
 
-    console.log("挖矿奖励：", ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
-    // console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
+    // console.log("挖矿奖励：", ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
+    console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
     // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmount()));
 
     // 领奖
@@ -121,13 +128,52 @@ async function main() {
 async function participate(user, etimMain) {
     try {
         console.log(`[ETIMMain] participate ${user.address}`);
+
+        const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
+        const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
+        const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+        const ETIMMainAddress = await etimMain.getAddress();
+
         // 检查账户余额
-        const balance = await ethers.provider.getBalance(user.address);
-        console.log("账户余额:", user.address, ethers.formatEther(balance), "ETH");
+        const bnbBalance = await ethers.provider.getBalance(user.address);
+        const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
+        const wethBalance = await weth.balanceOf(user.address);
+        console.log("BNB 余额:", ethers.formatEther(bnbBalance));
+        console.log("WETH 余额:", ethers.formatEther(wethBalance));
 
         await getUserInfo(etimMain, user);
 
-        const tx = await etimMain.connect(user).deposit({ value: ethers.parseEther("0.0637") });
+        const depositAmount = ethers.parseEther("0.0637");
+
+        // 如果 WETH 不够，先用 BNB 买 WETH
+        if (wethBalance < depositAmount) {
+            console.log("WETH 不够，用 BNB 购买...");
+            const ROUTER_ABI = [
+                "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)"
+            ];
+            const router = new ethers.Contract(PANCAKE_ROUTER_V2, ROUTER_ABI, user);
+            const path = [WBNB_ADDRESS, WETH_ADDRESS];
+            const block = await ethers.provider.getBlock("latest");
+            const deadline = block.timestamp + 60 * 20;  // 区块时间 + 20分钟（fork 环境必须用区块时间）
+            const swapTx = await router.swapExactETHForTokens(
+                0,
+                path,
+                user.address,
+                deadline,
+                { value: ethers.parseEther("500") }  // 换等量 WETH
+            );
+            await swapTx.wait();
+            console.log("购买 WETH 完成");
+        }
+
+        // 授权 WETH 给 main 合约
+        console.log("授权 WETH 给 main 合约...");
+        const approveTx = await weth.connect(user).approve(ETIMMainAddress, ethers.MaxInt256);
+        await approveTx.wait();
+
+        // 存款
+        console.log("调用 deposit...");
+        const tx = await etimMain.connect(user).deposit(depositAmount);
         const receipt = await tx.wait();
         console.log("交易hash", receipt.hash);
     } catch (e) {
@@ -177,8 +223,8 @@ async function getEtimMainStatus(etimMain) {
     console.log('etimMain 某日价格(ETIM per USDC): ', ethers.formatEther(await etimMain.dailyUsdEtimPrice(20513)));
     console.log('etimMain 总激活节点: ', await etimMain.totalActiveNodes());
     console.log('etimMain 激活节点奖励份额: ', ethers.formatEther(await etimMain.rewardPerNode()));
-    console.log('etimMain S2奖励(ETH): ', ethers.formatEther(await etimMain.s2PlusPoolEth()));
-    console.log('etimMain S3奖励(ETH): ', ethers.formatEther(await etimMain.s3PlusPoolEth()));
+    console.log('etimMain S2奖励(ETH): ', ethers.formatEther(await etimMain.s2PlusAccRewardPerShare()));
+    console.log('etimMain S3奖励(ETH): ', ethers.formatEther(await etimMain.s3PlusAccRewardPerShare()));
     console.log('etimMain 基金会(ETH): ', ethers.formatEther(await etimMain.foundationRewardEth()));
     console.log('etimMain 奖池(ETH): ', ethers.formatEther(await etimMain.potRewardEth()));
     console.log('etimMain 官方(ETH): ', ethers.formatEther(await etimMain.officialRewardEth()));
