@@ -15,7 +15,6 @@ import {FullMath} from "@pancakeswap/infinity-core/src/pool-cl/libraries/FullMat
 import {CLPoolParametersHelper} from "@pancakeswap/infinity-core/src/pool-cl/libraries/CLPoolParametersHelper.sol";
 import {LiquidityAmounts} from "./lib/LiquidityAmounts.sol";
 import {BalanceDelta} from "@pancakeswap/infinity-core/src/types/BalanceDelta.sol";
-import {IHooks} from "@pancakeswap/infinity-core/src/interfaces/IHooks.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
