@@ -62,7 +62,16 @@ export function LevelCard({ level, directReferrals, personalTokens, totalTeamTok
       {nextLevel && (
         <div className="mt-4 pt-4 border-t border-gray-700">
           <p className="text-xs text-gray-500">
-            {t('level.nextLevel')} ({nextLevel.level}): {nextLevel.referrals} {t('level.referrals')}, {nextLevel.personal} {t('level.personal')}, {nextLevel.team} {t('level.team')}
+            {t('level.nextLevel')} ({nextLevel.level}):{' '}
+            <span className={directReferrals >= nextLevel.referrals ? 'text-green-400' : 'text-gray-500'}>
+              {nextLevel.referrals} {t('level.referrals')}
+            </span>,{' '}
+            <span className={Number(personalTokens) >= Number(nextLevel.personal.replace(/,/g, '')) ? 'text-green-400' : 'text-gray-500'}>
+              {nextLevel.personal} {t('level.personal')}
+            </span>,{' '}
+            <span className={Number(smallZoneTokens) >= Number(nextLevel.team.replace(/,/g, '')) ? 'text-green-400' : 'text-gray-500'}>
+              {nextLevel.team} {t('level.team')}
+            </span>
           </p>
         </div>
       )}

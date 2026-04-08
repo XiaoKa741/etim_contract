@@ -70,11 +70,11 @@ export default function DashboardPage() {
       </div>
 
       {!user?.isParticipant && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6">
-          <p className="text-yellow-300 text-sm font-medium mb-3">{t('dashboard.notParticipated')}</p>
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-5 mb-6">
+          <p className="text-yellow-300 text-sm font-medium mb-4">{t('dashboard.notParticipated')}</p>
 
           {/* Step 1 */}
-          <div className="mb-3">
+          <div className="mb-4">
             {referrer && referrer !== '0x0000000000000000000000000000000000000000' ? (
               <>
                 <p className="text-green-400 text-sm font-medium flex items-center gap-1.5">
@@ -90,29 +90,37 @@ export default function DashboardPage() {
             ) : (
               <>
                 <p className="text-yellow-200 text-sm font-medium">{t('dashboard.step1Title')}</p>
-                <p className="text-yellow-200/80 text-sm mt-1 ml-3">{t('dashboard.step1Desc')}</p>
-                <ul className="text-yellow-200/80 text-sm mt-1 space-y-0.5 ml-3">
-                  <li>• {t('dashboard.step1a')}</li>
-                  <li>• {t('dashboard.step1b')}</li>
-                </ul>
+                <p className="text-yellow-200/70 text-xs mt-1 ml-3">{t('dashboard.step1Desc')}</p>
               </>
             )}
           </div>
 
           {/* Step 2 */}
-          <div className="mb-3">
+          <div className="mb-4">
             <p className="text-yellow-200 text-sm font-medium">{t('dashboard.step2Title')}</p>
-            <div className="text-yellow-200/80 text-sm mt-1 ml-3">
-              <span>{t('dashboard.step2Desc')}</span>
-              {config.minEthFormatted && config.maxEthFormatted && (
-                <span className="text-yellow-100"> (~{config.minEthFormatted}-{config.maxEthFormatted} ETH)</span>
-              )}
+            {config.minEthFormatted && config.maxEthFormatted && (
+              <p className="text-yellow-200/70 text-xs mt-1.5 ml-3">
+                {t('dashboard.step2Range')}: <span className="text-yellow-100 font-medium">{config.minEthFormatted} - {config.maxEthFormatted} ETH</span>
+              </p>
+            )}
+            <div className="mt-2 ml-3 space-y-1.5">
+              <p className="text-yellow-200/70 text-xs flex items-start gap-1.5">
+                <span className="text-yellow-300 font-medium shrink-0">A.</span>
+                {t('dashboard.step2OptionA')}
+              </p>
+              <p className="text-yellow-200/70 text-xs flex items-start gap-1.5">
+                <span className="text-yellow-300 font-medium shrink-0">B.</span>
+                {t('dashboard.step2OptionB')}
+              </p>
             </div>
-            <p className="text-yellow-300/60 text-xs mt-1 ml-3">{t('dashboard.step2Note')}</p>
+            <p className="text-yellow-300/50 text-xs mt-1.5 ml-3">{t('dashboard.step2Note')}</p>
           </div>
 
-          {/* Tip */}
-          <p className="text-yellow-300/70 text-sm mt-3 ml-3">💡 {t('dashboard.participationTip')}</p>
+          {/* Tips */}
+          <div className="space-y-1 ml-3">
+            <p className="text-yellow-300/70 text-xs">💡 {t('dashboard.participationTip')}</p>
+            <p className="text-yellow-300/70 text-xs">💡 {t('dashboard.bnbClaimTip')}</p>
+          </div>
 
           {/* Node holder quota info */}
           {Number(nodeBalance) > 0 && (
@@ -138,12 +146,12 @@ export default function DashboardPage() {
             )}
             <div className="flex items-center gap-2">
               <p className="text-yellow-300/60 text-xs">{t('dashboard.depositContract')}:</p>
-              <code className="text-yellow-200/80 text-xs bg-yellow-500/10 px-1.5 py-0.5 rounded">
-                {CONTRACTS.ETIMMain.slice(0, 6)}...{CONTRACTS.ETIMMain.slice(-4)}
+              <code className="text-yellow-200/80 text-xs bg-yellow-500/10 px-2 py-0.5 rounded font-mono break-all">
+                {CONTRACTS.ETIMMain}
               </code>
               <button
                 onClick={() => navigator.clipboard.writeText(CONTRACTS.ETIMMain)}
-                className="text-yellow-400 hover:text-yellow-300 text-xs transition-colors"
+                className="text-yellow-400 hover:text-yellow-300 text-xs transition-colors shrink-0"
                 title={t('dashboard.copyAddress')}
               >
                 {t('dashboard.copy')}

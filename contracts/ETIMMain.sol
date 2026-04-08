@@ -252,9 +252,9 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         participationAmountMax = 150 * 10**6;
         dailyMiningRate        = 1;
         maxTeamDepth           = 20;
-        lpBurnCooldown         = 15 minutes;
+        lpBurnCooldown         = 2 hours;
         lpBurnAutoRatio        = 1000;
-        lpBurnManualRatio      = 10;
+        lpBurnManualRatio      = 100;
         ethPriceInUsd          = 2000 * 10**6;
         ethPriceInEtim         = 2000 * 10**18;
         etimPerUsd             = 1 * 10**18;
@@ -270,13 +270,13 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
 
     // Initialize membership level conditions
     function _initializeLevelConditions() internal {
-        levelConditions[0] = LevelCondition(0,  0,               0,                10); // S0: 10/100 = 10% acceleration from direct referrals
-        levelConditions[1] = LevelCondition(5,  30000  * 10**18, 300000  * 10**18,  7);
-        levelConditions[2] = LevelCondition(10, 50000  * 10**18, 1000000 * 10**18, 10);
-        levelConditions[3] = LevelCondition(15, 100000 * 10**18, 2000000 * 10**18, 12);
-        levelConditions[4] = LevelCondition(20, 150000 * 10**18, 3000000 * 10**18, 15);
-        levelConditions[5] = LevelCondition(25, 200000 * 10**18, 4000000 * 10**18, 18);
-        levelConditions[6] = LevelCondition(30, 300000 * 10**18, 5000000 * 10**18, 21);
+        levelConditions[0] = LevelCondition(0,  0,              0,               10); // S0: 10% acceleration from direct referrals
+        levelConditions[1] = LevelCondition(5,  10000 * 10**18, 100000 * 10**18,  7);
+        levelConditions[2] = LevelCondition(10, 20000 * 10**18, 200000 * 10**18, 10);
+        levelConditions[3] = LevelCondition(15, 30000 * 10**18, 400000 * 10**18, 12);
+        levelConditions[4] = LevelCondition(20, 40000 * 10**18, 500000 * 10**18, 15);
+        levelConditions[5] = LevelCondition(25, 50000 * 10**18, 600000 * 10**18, 18);
+        levelConditions[6] = LevelCondition(30, 60000 * 10**18, 700000 * 10**18, 21);
     }
 
     // User deposits WETH (BSC bridged ETH) to participate
