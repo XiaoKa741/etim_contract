@@ -1328,6 +1328,48 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         dailyDepositLimit = limit;
     }
 
+    // Owner manually sets referral relationship (for edge cases where auto-binding fails)
+    function setReferrer(address invitee, address referrer) external onlyOwner {
+        if (invitee == address(0) || referrer == address(0)) revert ZeroAddress();
+        if (invitee == referrer) revert InvalidParams();
+        if (referrerOf[invitee] != address(0)) revert InvalidParams(); // already has referrer
+
+        referralsOf[referrer][invitee] = block.timestamp;
+        referralsOfList[referrer].push(invitee);
+        referrerOf[invitee] = referrer;
+        users[referrer].directReferralCount++;
+
+        // Initialize invitee's branchTokenBalance
+        uint256 inviteeBalance = etimToken.balanceOf(invitee);
+        if (branchTokenBalance[invitee] == 0 && inviteeBalance > 0) {
+            branchTokenBalance[invitee] = inviteeBalance;
+        }
+
+        // Propagate team balance if invitee has deposited
+        if (users[invitee].participationTime > 0) {
+            uint256 inviteeBranch = branchTokenBalance[invitee];
+            if (inviteeBranch > 0) {
+                address cur = invitee;
+                for (uint256 d = 0; d < maxTeamDepth; d++) {
+                    address ref = referrerOf[cur];
+                    if (ref == address(0)) break;
+                    users[ref].teamTokenBalance += inviteeBranch;
+                    branchTokenBalance[ref] += inviteeBranch;
+                    cur = ref;
+                }
+            }
+        }
+
+        _checkAndUpdateLevel(referrer);
+        _checkAndUpdateLevel(invitee);
+
+        // Clean up any pending transfer records
+        if (transferRecords[referrer][invitee] > 0) delete transferRecords[referrer][invitee];
+        if (transferRecords[invitee][referrer] > 0) delete transferRecords[invitee][referrer];
+
+        emit ReferralAdded(referrer, invitee, block.timestamp);
+    }
+
     function setLevelCondition(
         uint8   level,
         uint256 minDirectReferrals,
