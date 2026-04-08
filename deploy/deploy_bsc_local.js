@@ -1,4 +1,4 @@
-const { ethers } = require("hardhat");
+const { ethers, upgrades } = require("hardhat");
 
 async function main() {
     // await deploy();
@@ -103,26 +103,29 @@ async function deploy() {
     console.log("税收HOOK合约验证 buyTaxBps:", await etimHook.buyTaxBps());
     console.log("税收HOOK合约验证 sellTaxBps:", await etimHook.sellTaxBps());
 
-    // ========== 部署WETH/ETIM代币池合约 ==========
-    console.log("\n🆗. 部署WETH/ETIM代币池合约...");
+    // ========== 部署WETH/ETIM代币池合约 (UUPS Proxy) ==========
+    console.log("\n🆗. 部署WETH/ETIM代币池合约 (UUPS Proxy)...");
     const ETIMPool = await ethers.getContractFactory("ETIMPoolHelper");
-    const etimPool = await ETIMPool.deploy(
-        VAULT_ADDRESS,
-        CL_POOL_MANAGER_ADDRESS,
-        WETH_ADDRESS,
-        etimTokenAddress,
-        USDC_ADDRESS,
-        hookAddress,
-        CHAINLINK_ETH_USD,
-    );
+    const etimPool = await upgrades.deployProxy(ETIMPool, [hookAddress], {
+        kind: 'uups',
+        constructorArgs: [
+            VAULT_ADDRESS,
+            CL_POOL_MANAGER_ADDRESS,
+            WETH_ADDRESS,
+            etimTokenAddress,
+            USDC_ADDRESS,
+            CHAINLINK_ETH_USD,
+        ],
+        unsafeAllow: ['constructor'],
+    });
     await etimPool.waitForDeployment();
     const etimPoolAddress = await etimPool.getAddress();
-    console.log("池子HELPER合约地址:", etimPoolAddress);
+    console.log("池子HELPER合约地址 (Proxy):", etimPoolAddress);
 
-    // ========== 部署主合约 ==========
-    console.log("\n🆗. 部署ETIM主合约...");
+    // ========== 部署主合约 (UUPS Proxy) ==========
+    console.log("\n🆗. 部署ETIM主合约 (UUPS Proxy)...");
     const ETIMMain = await ethers.getContractFactory("ETIMMain");
-    const etimMain = await ETIMMain.deploy(
+    const etimMain = await upgrades.deployProxy(ETIMMain, [
         etimTokenAddress,
         WETH_ADDRESS,
         etimNodeAddress,
@@ -130,10 +133,10 @@ async function deploy() {
         hookAddress,
         PANCAKE_ROUTER_V2,
         WBNB_ADDRESS,
-    );
+    ], { kind: 'uups' });
     await etimMain.waitForDeployment();
     const etimMainAddress = await etimMain.getAddress();
-    console.log("主合约地址:", etimMainAddress);
+    console.log("主合约地址 (Proxy):", etimMainAddress);
 
     // ========== 分配代币（总量 100,000,000 ETIM）==========
     console.log("\n🆗. 分配代币...");
@@ -179,7 +182,10 @@ async function deploy() {
     };
     const Q96 = 2n ** 96n;
     const priceEtimPerEth = 500000n; // 1 ETH = 500000 ETIM
-    const sqrtPriceX96 = sqrtBigInt(priceEtimPerEth * Q96 * Q96);
+    // sqrtPriceX96 = sqrt(token1/token0) * 2^96, respecting address order
+    const wethAddr = BigInt(WETH_ADDRESS);
+    const etimAddr = BigInt(etimTokenAddress);
+    const sqrtPriceX96 = wethAddr < etimAddr ? sqrtBigInt(priceEtimPerEth * Q96 * Q96) : sqrtBigInt(Q96 * Q96 / priceEtimPerEth);
     tx = await etimPool.initializePool(sqrtPriceX96);
     await tx.wait();
     console.log("【池子HELPER合约】初始化池子价格WETH/ETIM");
@@ -202,7 +208,7 @@ async function deploy() {
 
     // ========== 部署总结 ==========
     console.log("\n" + "=".repeat(60));
-    console.log("BSC Fork 本地部署完成！合约地址汇总:");
+    console.log("BSC Fork 本地部署完成！合约地址汇总 (UUPS Proxy):");
     console.log("=".repeat(60));
     console.log("ETIMToken      :", etimTokenAddress);
     console.log("ETIMNode       :", etimNodeAddress);
