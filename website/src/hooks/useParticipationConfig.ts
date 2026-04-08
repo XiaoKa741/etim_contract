@@ -44,11 +44,17 @@ export function useParticipationConfig() {
     ? (BigInt(nodeQuota.toString()) * BigInt(10 ** 18)) / BigInt(ethPriceInUsd.toString())
     : undefined;
 
-  // Format for display (ETH has 18 decimals)
+  // Format for display (ETH has 18 decimals), auto precision to avoid showing 0.0000
   const formatEth = (wei: bigint | undefined): string | undefined => {
     if (!wei) return undefined;
     const eth = Number(wei) / 1e18;
-    return eth.toFixed(4);
+    if (eth === 0) return '0.0000';
+    // Find enough decimal places to show a non-zero value (min 4, max 8)
+    for (let d = 4; d <= 8; d++) {
+      const formatted = eth.toFixed(d);
+      if (Number(formatted) > 0) return formatted;
+    }
+    return eth.toFixed(8);
   };
 
   // Format USD price (6 decimals)

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { parseEther, formatEther, erc20Abi } from 'viem';
 import { useWriteContract, useWaitForTransactionReceipt, useAccount, useReadContract } from 'wagmi';
+import { useQueryClient } from '@tanstack/react-query';
 import { CONTRACTS } from '@/config/contracts';
 import { ETIMMainABI } from '@/config/abis';
 import { useTranslation } from '@/lib/i18n';
@@ -24,11 +25,36 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
   const [amount, setAmount] = useState('');
   const [step, setStep] = useState<'approve' | 'deposit'>('approve');
 
-  const { writeContract: writeApprove, data: approveHash, isPending: isApprovePending, error: approveError } = useWriteContract();
-  const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({ hash: approveHash });
+  const queryClient = useQueryClient();
 
-  const { writeContract: writeDeposit, data: depositHash, isPending: isDepositPending, error: depositError } = useWriteContract();
-  const { isLoading: isDepositConfirming, isSuccess: isDepositSuccess } = useWaitForTransactionReceipt({ hash: depositHash });
+  const { writeContract: writeApprove, data: approveHash, isPending: isApprovePending, error: approveError, reset: resetApprove } = useWriteContract();
+  const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess, isError: isApproveError } = useWaitForTransactionReceipt({ hash: approveHash });
+
+  const { writeContract: writeDeposit, data: depositHash, isPending: isDepositPending, error: depositError, reset: resetDeposit } = useWriteContract();
+  const { isLoading: isDepositConfirming, isSuccess: isDepositSuccess, isError: isDepositError } = useWaitForTransactionReceipt({ hash: depositHash });
+
+  // Refresh data after approve succeeds
+  useEffect(() => {
+    if (isApproveSuccess) {
+      queryClient.invalidateQueries();
+    }
+  }, [isApproveSuccess, queryClient]);
+
+  // Refresh data after deposit succeeds
+  useEffect(() => {
+    if (isDepositSuccess) {
+      queryClient.invalidateQueries();
+    }
+  }, [isDepositSuccess, queryClient]);
+
+  // Reset write state if on-chain tx failed (so button becomes clickable again)
+  useEffect(() => {
+    if (isApproveError) resetApprove();
+  }, [isApproveError, resetApprove]);
+
+  useEffect(() => {
+    if (isDepositError) resetDeposit();
+  }, [isDepositError, resetDeposit]);
 
   // Read WETH balance
   const { data: wethBalance } = useReadContract({
