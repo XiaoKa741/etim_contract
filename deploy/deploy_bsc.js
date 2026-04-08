@@ -108,7 +108,7 @@ async function deploy() {
             USDC_ADDRESS,
             CHAINLINK_ETH_USD,
         ],
-        unsafeAllow: ['constructor'],
+        unsafeAllow: ['constructor', 'state-variable-immutable'],
     });
     await etimPool.waitForDeployment();
     const etimPoolAddress = await etimPool.getAddress();
