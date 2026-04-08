@@ -31,12 +31,14 @@ contract ETIMToken is ERC20, Ownable2Step {
     //                       STATE
     // =========================================================
     address public mainContract;
+    mapping(address => bool) public excludedFromCallback;  // DEX pool / router etc.
 
     // =========================================================
     //                      EVENTS
     // =========================================================
 
     event MainContractSet(address indexed main);
+    event ExcludedFromCallbackSet(address indexed addr, bool excluded);
     event CallbackFailed(string callbackName, address indexed from, address indexed to, uint256 value, bytes reason);
 
     constructor(
@@ -55,6 +57,12 @@ contract ETIMToken is ERC20, Ownable2Step {
     function setMainContract(address _mainContract) external onlyOwner {
         mainContract = _mainContract;
         emit MainContractSet(_mainContract);
+    }
+
+    // Exclude address from triggering main callbacks (e.g. DEX pool, router)
+    function setExcludedFromCallback(address addr, bool excluded) external onlyOwner {
+        excludedFromCallback[addr] = excluded;
+        emit ExcludedFromCallbackSet(addr, excluded);
     }
 
     function _update(
@@ -77,7 +85,7 @@ contract ETIMToken is ERC20, Ownable2Step {
         }
     }
 
-    // Any address <-> Any address (except mint/burn), triggers full transfer callback
+    // Any address <-> Any address (except mint/burn/excluded), triggers full transfer callback
     // Supports both EOA and contract wallets (e.g. multisig, AA wallets)
     function _shouldNotifyMain(address from, address to) private view returns (bool) {
         return mainContract != address(0)
@@ -85,13 +93,17 @@ contract ETIMToken is ERC20, Ownable2Step {
             && to   != address(0)
             && to   != BURN_ADDRESS
             && from != mainContract
-            && to   != mainContract;
+            && to   != mainContract
+            && !excludedFromCallback[from]
+            && !excludedFromCallback[to];
     }
 
     // Transfers involving mainContract or burn, triggers balance change callback only
+    // Excluded addresses (DEX pool/router) skip all callbacks — no balance tracking needed
     function _shouldNotifyBalanceChange(address from, address to) private view returns (bool) {
         if (mainContract == address(0)) return false;
         if (from == address(0) || to == address(0)) return false;
+        if (excludedFromCallback[from] || excludedFromCallback[to]) return false;
         // If one side is mainContract or burn address, notify balance change (not full transfer)
         if (from == mainContract || to == mainContract || to == BURN_ADDRESS) return true;
         return false;
