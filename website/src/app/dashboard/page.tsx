@@ -75,12 +75,28 @@ export default function DashboardPage() {
 
           {/* Step 1 */}
           <div className="mb-3">
-            <p className="text-yellow-200 text-sm font-medium">{t('dashboard.step1Title')}</p>
-            <p className="text-yellow-200/80 text-sm mt-1 ml-3">{t('dashboard.step1Desc')}</p>
-            <ul className="text-yellow-200/80 text-sm mt-1 space-y-0.5 ml-3">
-              <li>• {t('dashboard.step1a')}</li>
-              <li>• {t('dashboard.step1b')}</li>
-            </ul>
+            {referrer && referrer !== '0x0000000000000000000000000000000000000000' ? (
+              <>
+                <p className="text-green-400 text-sm font-medium flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {t('dashboard.step1Title')}
+                </p>
+                <p className="text-gray-500 text-xs mt-1 ml-6">
+                  Referrer: {referrer.slice(0, 6)}...{referrer.slice(-4)}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-yellow-200 text-sm font-medium">{t('dashboard.step1Title')}</p>
+                <p className="text-yellow-200/80 text-sm mt-1 ml-3">{t('dashboard.step1Desc')}</p>
+                <ul className="text-yellow-200/80 text-sm mt-1 space-y-0.5 ml-3">
+                  <li>• {t('dashboard.step1a')}</li>
+                  <li>• {t('dashboard.step1b')}</li>
+                </ul>
+              </>
+            )}
           </div>
 
           {/* Step 2 */}

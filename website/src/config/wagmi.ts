@@ -19,13 +19,6 @@ export const config = createConfig({
   // Poll every 2 seconds for transaction receipts
   pollingInterval: 2_000,
   storage: createStorage({
-    storage: typeof window !== 'undefined' ? {
-      getItem: (key) => {
-        if (key === 'wagmi.store') return null;
-        return window.localStorage.getItem(key);
-      },
-      setItem: (key, value) => window.localStorage.setItem(key, value),
-      removeItem: (key) => window.localStorage.removeItem(key),
-    } : undefined,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
   }),
 });

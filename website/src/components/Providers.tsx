@@ -24,7 +24,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <WagmiProvider config={config} reconnectOnMount={false}>
+    <WagmiProvider config={config} reconnectOnMount={true}>
       <QueryClientProvider client={queryClient}>
         <LanguageProvider>
           {mounted ? children : null}

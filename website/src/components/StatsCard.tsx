@@ -5,7 +5,7 @@ import { useGlobalStats } from '@/hooks/useGlobalStats';
 import { useTranslation } from '@/lib/i18n';
 
 export function StatsCard() {
-  const { totalUsers, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool } = useGlobalStats();
+  const { totalUsers, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool, poolEthReserves, poolEtimReserves } = useGlobalStats();
   const { t } = useTranslation();
 
   const stats = [
@@ -16,6 +16,8 @@ export function StatsCard() {
     { label: t('stats.s2PlusPlayers'), value: s2PlusCount !== undefined ? Number(s2PlusCount).toLocaleString() : '—' },
     { label: t('stats.s6Players'), value: s6Count !== undefined ? Number(s6Count).toLocaleString() : '—' },
     { label: t('stats.s6RewardPool'), value: s6RewardPool !== undefined ? `${Number(formatEther(s6RewardPool)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ETIM` : '—' },
+    { label: t('stats.poolEth'), value: poolEthReserves !== undefined ? `${Number(formatEther(poolEthReserves)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ETH` : '—' },
+    { label: t('stats.poolEtim'), value: poolEtimReserves !== undefined ? `${Number(formatEther(poolEtimReserves)).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETIM` : '—' },
   ];
 
   return (

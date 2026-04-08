@@ -2,6 +2,8 @@
 
 import { formatEther } from 'viem';
 import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { CONTRACTS } from '@/config/contracts';
 import { ETIMMainABI } from '@/config/abis';
 import { useTranslation } from '@/lib/i18n';
@@ -25,8 +27,15 @@ function ClaimButton({ label, amount, unit, functionName, disabled }: {
   disabled: boolean;
 }) {
   const { writeContract, data: hash, isPending } = useWriteContract();
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (isSuccess) {
+      queryClient.invalidateQueries();
+    }
+  }, [isSuccess, queryClient]);
 
   const handleClaim = () => {
     writeContract({ address: CONTRACTS.ETIMMain, abi: ETIMMainABI, functionName });
@@ -66,8 +75,8 @@ export function RewardsCard({ miningReward, nodeReward, s2PlusReward, s3PlusRewa
         <div>
           <ClaimButton label={t('rewards.mining')} amount={miningReward} unit="ETIM" functionName="claim" disabled={!isParticipant} />
           <ClaimButton label={t('rewards.node')} amount={nodeReward} unit="ETIM" functionName="claimNodeRewards" disabled={syncedNodeCount === 0} />
-          <ClaimButton label={t('rewards.s2Plus')} amount={s2PlusReward} unit="ETH" functionName="claimS2PlusRewards" disabled={level < 2} />
-          <ClaimButton label={t('rewards.s3Plus')} amount={s3PlusReward} unit="ETH" functionName="claimS3PlusRewards" disabled={level < 3} />
+          <ClaimButton label={t('rewards.s2Plus')} amount={s2PlusReward} unit="ETIM" functionName="claimS2PlusRewards" disabled={level < 2} />
+          <ClaimButton label={t('rewards.s3Plus')} amount={s3PlusReward} unit="ETIM" functionName="claimS3PlusRewards" disabled={level < 3} />
           <ClaimButton label={t('rewards.s6')} amount={s6Reward} unit="ETIM" functionName="claimS6Rewards" disabled={level < 6} />
         </div>
       )}

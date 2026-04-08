@@ -41,14 +41,17 @@ export function HeroSection() {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          {isConnected ? (
-            <Link
-              href="/dashboard"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-xl font-semibold transition-colors"
-            >
-              {t('hero.dashboardCta')}
-            </Link>
-          ) : (
+          <Link
+            href="/dashboard"
+            className={
+              isConnected
+                ? "bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-xl font-semibold transition-colors shadow-lg shadow-orange-500/25"
+                : "bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-3 rounded-xl font-semibold transition-colors"
+            }
+          >
+            {t('hero.dashboardCta')}
+          </Link>
+          {!isConnected && (
             <ConnectButton label={t('hero.connectCta')} />
           )}
           <Link

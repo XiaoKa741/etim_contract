@@ -460,3 +460,8 @@ export const StateViewABI = [
     outputs: [{ name: 'liquidity', type: 'uint128' }],
   },
 ] as const;
+
+export const ETIMPoolHelperABI = [
+  { name: 'getEthReserves', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: 'ethReserves', type: 'uint256' }] },
+  { name: 'getEtimPerEth', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: 'etimAmount', type: 'uint256' }] },
+] as const;
