@@ -98,13 +98,14 @@ contract ETIMToken is ERC20, Ownable2Step {
             && !excludedFromCallback[to];
     }
 
-    // Transfers involving mainContract or burn, triggers balance change callback only
-    // Excluded addresses (DEX pool/router) skip all callbacks — no balance tracking needed
+    // Transfers involving mainContract, burn, or excluded addresses (DEX pool/router),
+    // triggers balance change callback only (no referral binding, but team balance updated)
     function _shouldNotifyBalanceChange(address from, address to) private view returns (bool) {
         if (mainContract == address(0)) return false;
         if (from == address(0) || to == address(0)) return false;
-        if (excludedFromCallback[from] || excludedFromCallback[to]) return false;
-        // If one side is mainContract or burn address, notify balance change (not full transfer)
+        // Excluded addresses (DEX): notify balance change so team token balances stay in sync
+        if (excludedFromCallback[from] || excludedFromCallback[to]) return true;
+        // mainContract or burn address: notify balance change (not full transfer)
         if (from == mainContract || to == mainContract || to == BURN_ADDRESS) return true;
         return false;
     }
