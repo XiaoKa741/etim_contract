@@ -64,7 +64,7 @@ async function deploy() {
     // ========== 部署ETIM代币合约 ==========
     console.log("\n🆗. 部署ETIM代币合约...");
     const ETIMToken = await ethers.getContractFactory("ETIMToken");
-    const etimToken = await ETIMToken.deploy("GO Token", "GO");
+    const etimToken = await ETIMToken.deploy("Eternal Imprint", "ETIM");
     await etimToken.waitForDeployment();
     const etimTokenAddress = await etimToken.getAddress();
     console.log("ETIM代币合约地址:", etimTokenAddress);
@@ -125,7 +125,10 @@ async function deploy() {
         hookAddress,
         PANCAKE_ROUTER_V2,
         WBNB_ADDRESS,
-    ], { kind: 'uups' });
+    ], {
+        kind: 'uups',
+        unsafeAllow: ['constructor']
+    },);
     await etimMain.waitForDeployment();
     const etimMainAddress = await etimMain.getAddress();
     console.log("主合约地址 (Proxy):", etimMainAddress);

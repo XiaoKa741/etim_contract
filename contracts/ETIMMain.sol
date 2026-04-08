@@ -71,9 +71,9 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     uint256 public constant GROWTH_POOL_SUPPLY = 87_900_000 * 10 ** 18;
 
     // Base participation params
-    uint256 public participationAmountMin = 100 * 10**6; // 100 USD (6 decimals)
-    uint256 public participationAmountMax = 150 * 10**6; // 150 USD (6 decimals)
-    uint256 public dailyMiningRate = 1; // 0.1% = 1/1000
+    uint256 public participationAmountMin; // 100 USD (6 decimals)
+    uint256 public participationAmountMax; // 150 USD (6 decimals)
+    uint256 public dailyMiningRate; // 0.1% = 1/1000
 
     // Deposit fee distribution ratios (denominator = 1000)
     uint256 public constant NODE_SHARE      = 15;  // 1.5%
@@ -95,22 +95,22 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     uint256 public officialRewardEth;
 
     // Team depth
-    uint256 public maxTeamDepth = 20;  // max recursion depth for team balance propagation (owner adjustable)
+    uint256 public maxTeamDepth;  // max recursion depth for team balance propagation (owner adjustable)
 
     // Branch token balance: total tokens held by user + ALL their downstream (for big/small zone calc)
     mapping(address => uint256) public branchTokenBalance;
 
     // LP+Burn rate-limited allocation
-    uint256 public pendingLpEth       = 0;
-    uint256 public pendingSwapBurnEth = 0;
-    uint256 public lpBurnCooldown     = 15 minutes;
-    uint256 public lpBurnLastTrigger  = 0;
-    uint256 public lpBurnAutoRatio    = 1000; // ratio applied to LP and burn portions separately (denominator 1000)
+    uint256 public pendingLpEth;
+    uint256 public pendingSwapBurnEth;
+    uint256 public lpBurnCooldown;
+    uint256 public lpBurnLastTrigger;
+    uint256 public lpBurnAutoRatio; // ratio applied to LP and burn portions separately (denominator 1000)
 
     // LP+Burn manual trigger
-    uint256 public lpBurnManualRatio    = 10; // manual allocation ratio (LP+Burn)
-    uint256 public lpManualAmount       = 0;  // manual allocation a fixed amount for LP
-    uint256 public swapBurnManualAmount = 0;  // manual allocation a fixed amount for Burn
+    uint256 public lpBurnManualRatio; // manual allocation ratio (LP+Burn)
+    uint256 public lpManualAmount;  // manual allocation a fixed amount for LP
+    uint256 public swapBurnManualAmount;  // manual allocation a fixed amount for Burn
 
     // Node reward tracking
     uint256 public constant NODE_QUOTA = 300 * 10 ** 6;
@@ -159,20 +159,20 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     mapping(uint256 => uint256) public dailyEthEtimPrice;  // day => ETIM per ETH (18 decimals)
     mapping(uint256 => uint256) public dailyUsdEtimPrice;  // day => ETIM per USD (18 decimals)
 
-    uint256 public ethPriceInUsd  = 2000 * 10**6;   // 1 ETH = 2000 USD (6 decimals)
-    uint256 public ethPriceInEtim = 2000 * 10**18;  // 1 ETH = 2000 ETIM (18 decimals)
-    uint256 public etimPerUsd     = 1 * 10**18;     // 1 USD = 1 ETIM (18 decimals)
+    uint256 public ethPriceInUsd;   // 1 ETH = 2000 USD (6 decimals)
+    uint256 public ethPriceInEtim;  // 1 ETH = 2000 ETIM (18 decimals)
+    uint256 public etimPerUsd;     // 1 USD = 1 ETIM (18 decimals)
 
-    uint256 public lastEthEtimPriceTime = 0;
-    uint256 public lastEthUsdPriceTime  = 0;
+    uint256 public lastEthEtimPriceTime;
+    uint256 public lastEthUsdPriceTime;
 
     // Daily deposit limit
-    uint256 public dailyDepositCap    = 0;
-    uint256 public dailyDepositRate   = 200; // 20% = 200/1000
-    uint256 public dailyDepositLimit  = 0;   // if non-zero, used directly as daily cap
-    uint256 public dailyCapUpdatedDay = 0;
-    uint256 public dailyDepositTotal  = 0;
-    uint256 public dailyDepositDay    = 0;
+    uint256 public dailyDepositCap;
+    uint256 public dailyDepositRate; // 20% = 200/1000
+    uint256 public dailyDepositLimit;   // if non-zero, used directly as daily cap
+    uint256 public dailyCapUpdatedDay;
+    uint256 public dailyDepositTotal;
+    uint256 public dailyDepositDay;
 
     // Growth pool
     uint256 public growthPoolReleased;
