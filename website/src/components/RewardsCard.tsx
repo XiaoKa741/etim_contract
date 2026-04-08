@@ -75,8 +75,8 @@ export function RewardsCard({ miningReward, nodeReward, s2PlusReward, s3PlusRewa
         <div>
           <ClaimButton label={t('rewards.mining')} amount={miningReward} unit="ETIM" functionName="claim" disabled={!isParticipant} />
           <ClaimButton label={t('rewards.node')} amount={nodeReward} unit="ETIM" functionName="claimNodeRewards" disabled={syncedNodeCount === 0} />
-          <ClaimButton label={t('rewards.s2Plus')} amount={s2PlusReward} unit="ETIM" functionName="claimS2PlusRewards" disabled={level < 2} />
-          <ClaimButton label={t('rewards.s3Plus')} amount={s3PlusReward} unit="ETIM" functionName="claimS3PlusRewards" disabled={level < 3} />
+          <ClaimButton label={t('rewards.s2Plus')} amount={s2PlusReward} unit="ETH" functionName="claimS2PlusRewards" disabled={level < 2} />
+          <ClaimButton label={t('rewards.s3Plus')} amount={s3PlusReward} unit="ETH" functionName="claimS3PlusRewards" disabled={level < 3} />
           <ClaimButton label={t('rewards.s6')} amount={s6Reward} unit="ETIM" functionName="claimS6Rewards" disabled={level < 6} />
         </div>
       )}

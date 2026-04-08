@@ -76,18 +76,18 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     uint256 public dailyMiningRate; // 0.1% = 1/1000, set in initialize()
 
     // Deposit fee distribution ratios (denominator = 1000)
-    uint256 public constant NODE_SHARE      = 15;  // 1.5%
+    uint256 public constant NODE_SHARE      = 10;  // 1%
     uint256 public constant LP_SHARE        = 690; // 69%
     uint256 public constant BURN_SHARE      = 250; // 25%
-    uint256 public constant REWARD_SHARE    = 45;  // 4.5%
+    uint256 public constant REWARD_SHARE    = 50;  // 5% (remainder, not used in calculation)
     uint256 public constant FEE_DENOMINATOR = 1000;
 
     // Deposit reward distribution ratios (denominator = 1000)
-    uint256 public constant REWARD_S2         = 222; // ~22.2% of REWARD (= 1% of total)
-    uint256 public constant REWARD_S3         = 222; // ~22.2% of REWARD (= 1% of total)
-    uint256 public constant REWARD_FOUNDATION = 333; // ~33.3% of REWARD (= 1.5% of total)
-    uint256 public constant REWARD_POT        = 111; // ~11.1% of REWARD (= 0.5% of total)
-    uint256 public constant REWARD_OFFICIAL   = 112; // ~11.2% of REWARD (= 0.5% of total, remainder)
+    uint256 public constant REWARD_S2         = 300; // 30% of REWARD (= 1.5% of total) — WETH
+    uint256 public constant REWARD_S3         = 200; // 20% of REWARD (= 1% of total) — WETH
+    uint256 public constant REWARD_FOUNDATION = 300; // 30% of REWARD (= 1.5% of total)
+    uint256 public constant REWARD_POT        = 100; // 10% of REWARD (= 0.5% of total)
+    uint256 public constant REWARD_OFFICIAL   = 100; // 10% of REWARD (= 0.5% of total, remainder)
 
     // Deposit reward stats
     uint256 public foundationRewardEth;
@@ -389,12 +389,10 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
             _distributeNodeRewards(etimPoolHelper.swapEthToEtim(nodeEth));
         }
         if (s2Eth > 0) {
-            uint256 s2Etim = etimPoolHelper.swapEthToEtim(s2Eth);
-            _distributeS2PlusRewards(s2Etim);
+            _distributeS2PlusRewards(s2Eth);
         }
         if (s3Eth > 0) {
-            uint256 s3Etim = etimPoolHelper.swapEthToEtim(s3Eth);
-            _distributeS3PlusRewards(s3Etim);
+            _distributeS3PlusRewards(s3Eth);
         }
         if (foundationEth > 0) foundationRewardEth += foundationEth;
         if (potEth > 0)        potRewardEth        += potEth;
@@ -959,10 +957,10 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     //                     S2+ PLAYERS (Pull Mode)
     // =========================================================
 
-    // Accumulate ETIM rewards — increases accRewardPerShare for all active S2+ players
-    function _distributeS2PlusRewards(uint256 etimAmount) internal {
-        if (totalActiveS2PlusPlayers > 0 && etimAmount > 0) {
-            s2PlusAccRewardPerShare += (etimAmount * 1e18) / totalActiveS2PlusPlayers;
+    // Accumulate WETH rewards — increases accRewardPerShare for all active S2+ players
+    function _distributeS2PlusRewards(uint256 ethAmount) internal {
+        if (totalActiveS2PlusPlayers > 0 && ethAmount > 0) {
+            s2PlusAccRewardPerShare += (ethAmount * 1e18) / totalActiveS2PlusPlayers;
         }
     }
 
@@ -1016,7 +1014,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         return pending;
     }
 
-    // User claims their own S2+ rewards (O(1) gas)
+    // User claims their own S2+ rewards in WETH (O(1) gas)
     function claimS2PlusRewards() external nonReentrant {
         _checkAndUpdateLevel(msg.sender);
         _settleS2PlusReward(msg.sender);
@@ -1025,7 +1023,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         if (amount == 0) revert NoRewardsToClaim();
 
         s2PlusPendingReward[msg.sender] = 0;
-        etimToken.safeTransfer(msg.sender, amount);
+        weth.safeTransfer(msg.sender, amount);
         emit S2PlusRewardClaimed(msg.sender, amount);
     }
 
@@ -1033,10 +1031,10 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     //                     S3+ PLAYERS (Pull Mode)
     // =========================================================
 
-    // Accumulate ETIM rewards — increases accRewardPerShare for all active S3+ players
-    function _distributeS3PlusRewards(uint256 etimAmount) internal {
-        if (totalActiveS3PlusPlayers > 0 && etimAmount > 0) {
-            s3PlusAccRewardPerShare += (etimAmount * 1e18) / totalActiveS3PlusPlayers;
+    // Accumulate WETH rewards — increases accRewardPerShare for all active S3+ players
+    function _distributeS3PlusRewards(uint256 ethAmount) internal {
+        if (totalActiveS3PlusPlayers > 0 && ethAmount > 0) {
+            s3PlusAccRewardPerShare += (ethAmount * 1e18) / totalActiveS3PlusPlayers;
         }
     }
 
@@ -1090,7 +1088,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         return pending;
     }
 
-    // User claims their own S3+ rewards (O(1) gas)
+    // User claims their own S3+ rewards in WETH (O(1) gas)
     function claimS3PlusRewards() external nonReentrant {
         _checkAndUpdateLevel(msg.sender);
         _settleS3PlusReward(msg.sender);
@@ -1099,7 +1097,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         if (amount == 0) revert NoRewardsToClaim();
 
         s3PlusPendingReward[msg.sender] = 0;
-        etimToken.safeTransfer(msg.sender, amount);
+        weth.safeTransfer(msg.sender, amount);
         emit S3PlusRewardClaimed(msg.sender, amount);
     }
 
