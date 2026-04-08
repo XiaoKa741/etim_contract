@@ -257,7 +257,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
 
     // Initialize membership level conditions
     function _initializeLevelConditions() internal {
-        levelConditions[0] = LevelCondition(0,  0,               0,                 0); // S0 uses s0AccelerationRate instead
+        levelConditions[0] = LevelCondition(0,  0,               0,                10); // S0: 10/100 = 10% acceleration from direct referrals
         levelConditions[1] = LevelCondition(5,  30000  * 10**18, 300000  * 10**18,  7);
         levelConditions[2] = LevelCondition(10, 50000  * 10**18, 1000000 * 10**18, 10);
         levelConditions[3] = LevelCondition(15, 100000 * 10**18, 2000000 * 10**18, 12);
@@ -527,18 +527,18 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     }
 
     /// @notice Calculate acceleration bonus ETIM for a user on a given day
-    /// S0: direct referrals' daily ETIM output * s0AccelerationRate / 1000
+    /// S0: direct referrals' daily ETIM output * accelerationRate / 100
     /// S1-S6: small zone downstream daily ETIM output * accelerationRate / 100
     function _calculateAccelerationBonus(address userAddr, uint8 level, uint256 day) private view returns (uint256 bonusEtim) {
+        uint256 accelerationRate = levelConditions[level].accelerationRate;
+        if (accelerationRate == 0) return 0;
+
         if (level == 0) {
             // S0: bonus from all direct referrals' daily output
-            if (s0AccelerationRate == 0) return 0;
             uint256 totalDirectDailyEtim = _getDirectReferralsDailyEtim(userAddr, day);
-            bonusEtim = (totalDirectDailyEtim * s0AccelerationRate) / 1000;
+            bonusEtim = (totalDirectDailyEtim * accelerationRate) / 100;
         } else {
             // S1-S6: bonus from small zone downstream daily output
-            uint256 accelerationRate = levelConditions[level].accelerationRate;
-            if (accelerationRate == 0) return 0;
             uint256 smallZoneDailyEtim = _getSmallZoneDailyEtim(userAddr, day);
             bonusEtim = (smallZoneDailyEtim * accelerationRate) / 100;
         }
