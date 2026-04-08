@@ -9,6 +9,7 @@ import {PoolId, PoolIdLibrary} from "@pancakeswap/infinity-core/src/types/PoolId
 import {BalanceDelta} from "@pancakeswap/infinity-core/src/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "@pancakeswap/infinity-core/src/types/Currency.sol";
 import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "@pancakeswap/infinity-core/src/types/BeforeSwapDelta.sol";
+import {FullMath} from "@pancakeswap/infinity-core/src/pool-cl/libraries/FullMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -52,6 +53,9 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event TokenContractUpdated(address indexed current);
     event MainContractUpdated(address indexed previous, address indexed next);
+    event AutoBurned(uint256 amount);
+    event BasePriceUpdated(uint256 price);
+    event DropProtectionUpdated(uint256 thresholdBps, uint256 extraTaxBps, uint256 maxBps);
 
     // =========================================================
     //                      CONSTANTS
@@ -94,10 +98,18 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
     // =========================================================
 
     uint256 public buyTax;
-    uint256 public sellTaxToBurn;
     uint256 public sellTaxToS6;
     uint256 public sellTaxToFoundation;
     uint256 public sellTaxToOfficial;
+
+    // =========================================================
+    //                  DROP PROTECTION
+    // =========================================================
+
+    uint256 public basePrice;           // Base price: ETIM per WETH (18 decimals), set by owner
+    uint256 public dropThresholdBps;    // Drop threshold in bps (1000 = 10%)
+    uint256 public dropExtraTaxBps;     // Extra sell tax when drop exceeds threshold (bps)
+    uint256 public maxSellTaxBps;       // Max sell tax cap (bps), default 3000 = 30%
 
     // =========================================================
     //                      CONSTRUCTOR
@@ -116,6 +128,7 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
         owner        = _owner;
         buyTaxBps    = _buyTaxBps;
         sellTaxBps   = _sellTaxBps;
+        maxSellTaxBps = 3000; // 30% default cap
     }
 
     // =========================================================
@@ -167,63 +180,107 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
             return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
 
-        // WETH address must be set for buy/sell direction detection
-        if (wethAddress == address(0)) revert ZeroAddress();
+        // Contracts not fully configured — bypass tax
+        if (wethAddress == address(0) || mainContract == address(0) || etimContract == address(0)) {
+            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
 
-        // Determine buy/sell direction: buy = user sends WETH, receives ETIM
-        // If WETH is currency0: zeroForOne=true means WETH→ETIM (buy)
-        // If WETH is currency1: zeroForOne=false means WETH→ETIM (buy)
+        // Only exactInput
+        if (params.amountSpecified > 0) revert ExactOutputNotSupported();
+
+        // Determine buy/sell direction
         bool wethIs0 = Currency.unwrap(key.currency0) == wethAddress;
         bool isBuy = wethIs0 ? params.zeroForOne : !params.zeroForOne;
 
         // Buy disabled when growth pool is not depleted
         if (isBuy && !(IETIMMain(mainContract).isGrowthPoolDepleted())) revert BuyNotEnabled();
 
-        // Only exactInput
-        if (params.amountSpecified > 0) revert ExactOutputNotSupported();
-
-        if (address(0) == mainContract || address(0) == etimContract) {
-            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-        }
-
-        uint256 taxBps = isBuy ? buyTaxBps : sellTaxBps;
-        if (taxBps == 0) {
-            return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-        }
-
-        uint256 inAmount = uint256(-params.amountSpecified);
-        uint256 taxAmount = (inAmount * taxBps) / BPS_DENOMINATOR;
-
         // Determine which currency is WETH and which is ETIM
         Currency wethCurr = wethIs0 ? key.currency0 : key.currency1;
         Currency etimCurr = wethIs0 ? key.currency1 : key.currency0;
 
+        uint256 inAmount = uint256(-params.amountSpecified);
+
         if (isBuy) {
-            // Take WETH tax from the input (WETH side)
+            // === BUY: take WETH tax ===
+            if (buyTaxBps == 0) {
+                return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+            }
+            uint256 taxAmount = (inAmount * buyTaxBps) / BPS_DENOMINATOR;
             vault.take(wethCurr, address(this), taxAmount);
             buyTax += taxAmount;
+
+            return (
+                this.beforeSwap.selector,
+                toBeforeSwapDelta(int128(int256(taxAmount)), 0),
+                0
+            );
         } else {
-            // Take ETIM tax from the input (ETIM side)
-            vault.take(etimCurr, address(this), taxAmount);
+            // === SELL: apply drop protection + auto burn ===
+            uint256 effectiveSellTaxBps = sellTaxBps;
+
+            // Drop protection: if price dropped beyond threshold, increase sell tax
+            if (basePrice > 0 && dropThresholdBps > 0) {
+                uint256 currentPrice = _getCurrentPrice(key);
+                if (currentPrice < basePrice) {
+                    uint256 dropBps = (basePrice - currentPrice) * BPS_DENOMINATOR / basePrice;
+                    if (dropBps >= dropThresholdBps) {
+                        effectiveSellTaxBps += dropExtraTaxBps;
+                        if (maxSellTaxBps > 0 && effectiveSellTaxBps > maxSellTaxBps) {
+                            effectiveSellTaxBps = maxSellTaxBps;
+                        }
+                    }
+                }
+            }
+
+            if (effectiveSellTaxBps == 0) {
+                return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+            }
+
+            uint256 taxAmount = (inAmount * effectiveSellTaxBps) / BPS_DENOMINATOR;
+
+            // Split sell tax: burn(50%) + S6 + Foundation + Official (each ~16.7%)
             uint256 toS6         = taxAmount / 6;
             uint256 toFoundation = taxAmount / 6;
             uint256 toOfficial   = taxAmount / 6;
             uint256 toBurn       = taxAmount - toS6 - toFoundation - toOfficial;
 
+            // Auto burn: send directly to dead address
+            if (toBurn > 0) {
+                vault.take(etimCurr, BURN_ADDRESS, toBurn);
+                emit AutoBurned(toBurn);
+            }
+            // Remaining tax to hook for S6/Foundation/Official
+            uint256 toHook = toS6 + toFoundation + toOfficial;
+            if (toHook > 0) {
+                vault.take(etimCurr, address(this), toHook);
+            }
+
             sellTaxToS6         += toS6;
             sellTaxToFoundation += toFoundation;
             sellTaxToOfficial   += toOfficial;
-            sellTaxToBurn       += toBurn;
-        }
 
-        return (
-            this.beforeSwap.selector,
-            toBeforeSwapDelta(
-                int128(int256(taxAmount)),
+            return (
+                this.beforeSwap.selector,
+                toBeforeSwapDelta(int128(int256(taxAmount)), 0),
                 0
-            ),
-            0
-        );
+            );
+        }
+    }
+
+    /// @dev Read current ETIM/WETH price from pool (ETIM per 1 WETH, 18 decimals)
+    function _getCurrentPrice(PoolKey calldata key) private view returns (uint256) {
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(key.toId());
+        if (sqrtPriceX96 == 0) return 0;
+        uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
+        bool wethIs0 = Currency.unwrap(key.currency0) == wethAddress;
+        if (wethIs0) {
+            // currency0=WETH, currency1=ETIM → price = ETIM per WETH
+            return FullMath.mulDiv(priceX192, 1e18, 2 ** 192);
+        } else {
+            // currency0=ETIM, currency1=WETH → invert to get ETIM per WETH
+            return FullMath.mulDiv(2 ** 192, 1e18, priceX192);
+        }
     }
 
     // =========================================================
@@ -285,11 +342,19 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
         IERC20(etimContract).safeTransfer(to, amount);
     }
 
-    function burnSellTax() external onlyOwner nonReentrant {
-        uint256 amount = sellTaxToBurn;
-        if (amount == 0) revert NothingToWithdraw();
-        sellTaxToBurn = 0;
-        IERC20(etimContract).safeTransfer(BURN_ADDRESS, amount);
+    // burnSellTax() removed — burn is now automatic in _beforeSwap
+
+    function setBasePrice(uint256 _price) external onlyOwner {
+        basePrice = _price;
+        emit BasePriceUpdated(_price);
+    }
+
+    function setDropProtection(uint256 _thresholdBps, uint256 _extraTaxBps, uint256 _maxBps) external onlyOwner {
+        if (_maxBps > 5000) revert InvalidBps(); // hard cap 50%
+        dropThresholdBps = _thresholdBps;
+        dropExtraTaxBps  = _extraTaxBps;
+        maxSellTaxBps    = _maxBps;
+        emit DropProtectionUpdated(_thresholdBps, _extraTaxBps, _maxBps);
     }
 
     function withdrawBuyTax(address to) external onlyOwner nonReentrant {
@@ -336,6 +401,15 @@ contract ETIMTaxHook is CLBaseHook, ReentrancyGuard, Pausable {
 
     function getTaxConfig() external view returns (uint256 _buyBps, uint256 _sellBps) {
         return (buyTaxBps, sellTaxBps);
+    }
+
+    function getDropProtection() external view returns (
+        uint256 _basePrice,
+        uint256 _thresholdBps,
+        uint256 _extraTaxBps,
+        uint256 _maxBps
+    ) {
+        return (basePrice, dropThresholdBps, dropExtraTaxBps, maxSellTaxBps);
     }
 
 }
