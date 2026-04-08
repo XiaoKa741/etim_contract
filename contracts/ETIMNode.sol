@@ -15,7 +15,7 @@ contract ETIMNode is ERC721Enumerable, Ownable {
         return baseTokenURI;
     }
 
-    function mint(uint256 amount) external {
+    function mint(uint256 amount) external onlyOwner {
         require(msg.sender != address(0), "Address invalid");
 
         uint256 currentSupply = totalSupply();
