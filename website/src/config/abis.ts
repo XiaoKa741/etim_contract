@@ -130,6 +130,13 @@ export const ETIMMainABI = [
     ],
   },
   {
+    name: 'referralsOfList',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'referrer', type: 'address' }, { name: 'index', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+  {
     name: 'getSmallZoneTokens',
     type: 'function',
     stateMutability: 'view',

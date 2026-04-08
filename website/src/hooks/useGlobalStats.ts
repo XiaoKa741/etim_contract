@@ -65,9 +65,22 @@ export function useGlobalStats() {
     functionName: 'getEtimPerEth',
   });
 
+  const { data: ethPriceInUsd } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'ethPriceInUsd',
+  });
+
   // Calculate ETIM reserves: ethReserves * etimPerEth / 1e18
   const poolEtimReserves = poolEthReserves !== undefined && etimPerEth !== undefined
     ? (poolEthReserves as bigint) * (etimPerEth as bigint) / BigInt(1e18)
+    : undefined;
+
+  // Calculate ETIM price in USD: 1 ETIM = ethPriceInUsd / etimPerEth
+  // ethPriceInUsd is 6 decimals, etimPerEth is 18 decimals
+  // result = ethPriceInUsd * 1e18 / etimPerEth / 1e6 => USD value (float)
+  const etimPriceInUsd = ethPriceInUsd !== undefined && etimPerEth !== undefined && (etimPerEth as bigint) > BigInt(0)
+    ? Number(ethPriceInUsd as bigint) * 1e18 / Number(etimPerEth as bigint) / 1e6
     : undefined;
 
   return {
@@ -81,5 +94,6 @@ export function useGlobalStats() {
     s6RewardPool: s6RewardPool as bigint | undefined,
     poolEthReserves: poolEthReserves as bigint | undefined,
     poolEtimReserves,
+    etimPriceInUsd,
   };
 }

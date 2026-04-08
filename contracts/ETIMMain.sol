@@ -514,21 +514,31 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         uint256 initialRemaining = remainingValueInUsd;
 
         for (uint256 t = startDay; t < endDay; t += 1 days) {
-            // Base daily output in USD
-            uint256 dailyUsd = (user.investedValueInUsd * dailyMiningRate) / 1000;
+            // Base daily output in USD (6 decimals)
+            uint256 baseUsd = (user.investedValueInUsd * dailyMiningRate) / 1000;
+            if (baseUsd > remainingValueInUsd) baseUsd = remainingValueInUsd;
 
-            // Acceleration: calculate bonus ETIM from downstream, convert to USD equivalent
+            // Convert base USD to ETIM (no precision loss here)
+            uint256 baseEtim = _convertUsdToEtim(t, baseUsd);
+
+            // Acceleration: calculate bonus directly in ETIM (avoids ETIM→USD→ETIM truncation)
             uint256 bonusEtim = _calculateAccelerationBonus(userAddr, user.level, t);
+
+            // Cap bonus: convert bonus ETIM to USD equivalent for remaining value tracking
+            // Use higher precision: multiply before dividing
+            uint256 bonusUsd = 0;
             if (bonusEtim > 0) {
-                // Convert bonus ETIM to USD equivalent to add to dailyUsd for cap tracking
-                uint256 bonusUsd = _convertEtimToUsd(t, bonusEtim);
-                dailyUsd += bonusUsd;
+                bonusUsd = _convertEtimToUsd(t, bonusEtim);
+                if (bonusUsd + baseUsd > remainingValueInUsd) {
+                    // Scale down bonus proportionally to fit remaining cap
+                    uint256 allowedBonusUsd = remainingValueInUsd - baseUsd;
+                    bonusEtim = (bonusEtim * allowedBonusUsd) / (bonusUsd > 0 ? bonusUsd : 1);
+                    bonusUsd = allowedBonusUsd;
+                }
             }
 
-            if (dailyUsd > remainingValueInUsd) dailyUsd = remainingValueInUsd;
-
-            rewardInEtim        += _convertUsdToEtim(t, dailyUsd);
-            remainingValueInUsd -= dailyUsd;
+            rewardInEtim        += baseEtim + bonusEtim;
+            remainingValueInUsd -= baseUsd + bonusUsd;
 
             if (remainingValueInUsd == 0) break;
         }

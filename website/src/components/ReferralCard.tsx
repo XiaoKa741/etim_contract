@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
+import { DirectReferralList } from './DirectReferralList';
 
 interface ReferralCardProps {
   directReferralCount: number;
@@ -8,13 +10,15 @@ interface ReferralCardProps {
   teamTokenBalance: string;
   s2PlusActive: boolean;
   s6Active: boolean;
+  address: `0x${string}` | undefined;
 }
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-export function ReferralCard({ directReferralCount, referrer, teamTokenBalance, s2PlusActive, s6Active }: ReferralCardProps) {
+export function ReferralCard({ directReferralCount, referrer, teamTokenBalance, s2PlusActive, s6Active, address }: ReferralCardProps) {
   const { t } = useTranslation();
   const hasReferrer = referrer && referrer !== ZERO_ADDRESS;
+  const [showList, setShowList] = useState(false);
 
   return (
     <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
@@ -33,7 +37,7 @@ export function ReferralCard({ directReferralCount, referrer, teamTokenBalance, 
         <div>
           <div className="text-sm text-gray-400 mb-1">{t('referral.yourReferrer')}</div>
           {hasReferrer ? (
-            <a href={`https://etherscan.io/address/${referrer}`} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 font-mono text-sm break-all">{referrer}</a>
+            <a href={`https://bscscan.com/address/${referrer}`} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 font-mono text-sm break-all">{referrer}</a>
           ) : (
             <span className="text-gray-500 text-sm">{t('referral.noReferrer')}</span>
           )}
@@ -44,6 +48,30 @@ export function ReferralCard({ directReferralCount, referrer, teamTokenBalance, 
           {!s2PlusActive && !s6Active && <span className="text-gray-500 text-xs">{t('referral.noEligibility')}</span>}
         </div>
       </div>
+
+      {/* View / Hide referral list toggle */}
+      {address && (
+        <div className="mt-4 pt-4 border-t border-gray-700/30">
+          <button
+            onClick={() => setShowList((v) => !v)}
+            className="flex items-center gap-1.5 text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${showList ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            {showList ? t('referral.hideList') : t('referral.viewList')}
+            <span className="text-gray-500 text-xs">({directReferralCount})</span>
+          </button>
+          {showList && (
+            <DirectReferralList address={address} totalCount={directReferralCount} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
