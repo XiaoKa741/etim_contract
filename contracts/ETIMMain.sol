@@ -247,6 +247,19 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
         pancakeRouter  = IPancakeRouter(_pancakeRouter);
         wbnb           = _wbnb;
 
+        // Default parameters (field initializers don't execute in proxy context)
+        participationAmountMin = 100 * 10**6;
+        participationAmountMax = 150 * 10**6;
+        dailyMiningRate        = 1;
+        maxTeamDepth           = 20;
+        lpBurnCooldown         = 15 minutes;
+        lpBurnAutoRatio        = 1000;
+        lpBurnManualRatio      = 10;
+        ethPriceInUsd          = 2000 * 10**6;
+        ethPriceInEtim         = 2000 * 10**18;
+        etimPerUsd             = 1 * 10**18;
+        dailyDepositRate       = 200;
+
         _initializeLevelConditions();
 
         // Approve PoolHelper to spend all WETH (one-time, saves gas on each deposit)
