@@ -64,7 +64,7 @@ async function deploy() {
     // ========== 部署ETIM代币合约 ==========
     console.log("\n🆗. 部署ETIM代币合约...");
     const ETIMToken = await ethers.getContractFactory("ETIMToken");
-    const etimToken = await ETIMToken.deploy("ETIM Token", "ETIM");
+    const etimToken = await ETIMToken.deploy("GO Token", "GO");
     await etimToken.waitForDeployment();
     const etimTokenAddress = await etimToken.getAddress();
     console.log("ETIM代币合约地址:", etimTokenAddress);
@@ -159,6 +159,10 @@ async function deploy() {
     await tx.wait();
     console.log("【代币合约】设置main合约");
 
+    tx = await etimToken.setVaultAddress(VAULT_ADDRESS);
+    await tx.wait();
+    console.log("【代币合约】设置vault地址");
+
     tx = await etimPool.setMainContract(etimMainAddress);
     await tx.wait();
     console.log("【池子HELPER合约】设置main合约");
@@ -218,8 +222,8 @@ async function addLiquidity() {
     const [deployer] = await ethers.getSigners();
     const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
 
-    const ETIMTokenAddress = ""; // 替换为实际地址
-    const ETIMPoolAddress = ""; // 替换为实际地址
+    const ETIMTokenAddress = "0x14689d19819aaf43f0bFFE2982363Bf4712B7125";
+    const ETIMPoolAddress = "0x3AE147a38c52149dCA5d0C8bAE7c86feCF65EB18";
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
     const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
@@ -229,8 +233,8 @@ async function addLiquidity() {
     tx = await weth.connect(deployer).approve(ETIMPoolAddress, ethers.MaxInt256);
     await tx.wait();
 
-    const ethAmount = ethers.parseEther("0.1");
-    const etimAmount = ethers.parseEther("100");
+    const ethAmount = ethers.parseEther("0.001");
+    const etimAmount = ethers.parseEther("500");  // 1 ETH = 500000 ETIM
     tx = await etimPool.connect(deployer).addLiquidity(ethAmount, etimAmount);
     await tx.wait();
 
@@ -242,7 +246,7 @@ async function updateDailyPrice() {
 
     const [deployer] = await ethers.getSigners();
 
-    const ETIMMainAddress = ""; // 替换为实际地址
+    const ETIMMainAddress = "0x53B734d27AbA325A34ff8a0F27B58C1F3A2FE800"; // 替换为实际地址
     const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
 
     let tx = await etimMain.connect(deployer).updateDailyPrice();

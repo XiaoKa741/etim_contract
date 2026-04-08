@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -34,7 +34,7 @@ interface IETIMPoolHelper {
     function swapAndBurn(uint256 ethAmount) external;
 }
 
-contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ReentrancyGuardUpgradeable {
+contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ERRORS
@@ -232,8 +232,6 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     ) external initializer {
         __Ownable_init(msg.sender);
         __Ownable2Step_init();
-        __ReentrancyGuard_init();
-        __UUPSUpgradeable_init();
 
         if (_etimToken == address(0) || _weth == address(0) || _etimNode == address(0) ||
             _etimPoolHelper == address(0) || _etimTaxHook == address(0) ||

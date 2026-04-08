@@ -165,8 +165,6 @@ contract ETIMPoolHelper is Initializable, UUPSUpgradeable, ILockCallback {
     }
 
     function initialize(address _hook) external initializer {
-        __UUPSUpgradeable_init();
-
         owner = msg.sender;
 
         int24 tickSpacing60 = 60;
