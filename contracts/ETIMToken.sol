@@ -31,14 +31,12 @@ contract ETIMToken is ERC20, Ownable2Step {
     //                       STATE
     // =========================================================
     address public mainContract;
-    address public vaultAddress;  // PancakeSwap V4 Vault
 
     // =========================================================
     //                      EVENTS
     // =========================================================
 
     event MainContractSet(address indexed main);
-    event VaultAddressSet(address indexed vault);
     event CallbackFailed(string callbackName, address indexed from, address indexed to, uint256 value, bytes reason);
 
     constructor(
@@ -48,16 +46,15 @@ contract ETIMToken is ERC20, Ownable2Step {
         _mint(msg.sender, TOTAL_SUPPLY);
     }
 
+    // Check contract address
+    function _isContract(address addr) private view returns (bool) {
+        return addr.code.length > 0;
+    }
+
     // Set business contract
     function setMainContract(address _mainContract) external onlyOwner {
         mainContract = _mainContract;
         emit MainContractSet(_mainContract);
-    }
-
-    // Set swap vault address
-    function setVaultAddress(address _vault) external onlyOwner {
-        vaultAddress = _vault;
-        emit VaultAddressSet(_vault);
     }
 
     function _update(
@@ -80,7 +77,7 @@ contract ETIMToken is ERC20, Ownable2Step {
         }
     }
 
-    // Any address <-> Any address (except mint/burn/main/vault), triggers full transfer callback
+    // Any address <-> Any address (except mint/burn), triggers full transfer callback
     // Supports both EOA and contract wallets (e.g. multisig, AA wallets)
     function _shouldNotifyMain(address from, address to) private view returns (bool) {
         return mainContract != address(0)
@@ -88,16 +85,15 @@ contract ETIMToken is ERC20, Ownable2Step {
             && to   != address(0)
             && to   != BURN_ADDRESS
             && from != mainContract
-            && to   != mainContract
-            && from != vaultAddress
-            && to   != vaultAddress;
+            && to   != mainContract;
     }
 
-    // Transfers involving mainContract/vault/burn, triggers balance change callback only
+    // Transfers involving mainContract or burn, triggers balance change callback only
     function _shouldNotifyBalanceChange(address from, address to) private view returns (bool) {
-        return mainContract != address(0)
-            && from != address(0)
-            && to   != address(0)
-            && (from == mainContract || to == mainContract || to == BURN_ADDRESS || from == vaultAddress || to == vaultAddress);
+        if (mainContract == address(0)) return false;
+        if (from == address(0) || to == address(0)) return false;
+        // If one side is mainContract or burn address, notify balance change (not full transfer)
+        if (from == mainContract || to == mainContract || to == BURN_ADDRESS) return true;
+        return false;
     }
 }

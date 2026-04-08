@@ -164,10 +164,6 @@ async function deploy() {
     await tx.wait();
     console.log("【代币合约】设置main合约");
 
-    tx = await etimToken.setVaultAddress(VAULT_ADDRESS);
-    await tx.wait();
-    console.log("【代币合约】设置vault地址");
-
     tx = await etimPool.setMainContract(etimMainAddress);
     await tx.wait();
     console.log("【池子HELPER合约】设置main合约");
