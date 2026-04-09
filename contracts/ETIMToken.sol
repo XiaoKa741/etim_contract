@@ -53,8 +53,10 @@ contract ETIMToken is ERC20, Ownable2Step {
         return addr.code.length > 0;
     }
 
-    // Set business contract
+    // Set business contract (one-time only, permanently locked after first set)
     function setMainContract(address _mainContract) external onlyOwner {
+        require(mainContract == address(0), "mainContract already locked");
+        require(_mainContract != address(0), "invalid address");
         mainContract = _mainContract;
         emit MainContractSet(_mainContract);
     }
