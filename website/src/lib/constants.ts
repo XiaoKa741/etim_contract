@@ -21,11 +21,11 @@ export const LEVEL_REQUIREMENTS = [
 ];
 
 export const TOKENOMICS = [
-  { name: 'Growth Pool', amount: '87,900,000', percent: 87.9, color: 'bg-blue-500' },
+  { name: 'Growth Pool', amount: '84,900,000', percent: 84.9, color: 'bg-blue-500' },
   { name: 'Airdrop', amount: '5,000,000', percent: 5, color: 'bg-green-500' },
   { name: 'Market Infrastructure', amount: '5,000,000', percent: 5, color: 'bg-purple-500' },
   { name: 'Ecosystem Fund', amount: '1,000,000', percent: 1, color: 'bg-orange-500' },
-  { name: 'Community Fund', amount: '1,000,000', percent: 1, color: 'bg-red-500' },
+  { name: 'Community Fund', amount: '4,000,000', percent: 4, color: 'bg-red-500' },
   { name: 'Ethereum Foundation', amount: '100,000', percent: 0.1, color: 'bg-yellow-500' },
 ];
 

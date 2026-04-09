@@ -68,7 +68,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     // Total ETIM allocated to growth pool
-    uint256 public constant GROWTH_POOL_SUPPLY = 87_900_000 * 10 ** 18;
+    uint256 public constant GROWTH_POOL_SUPPLY = 84_900_000 * 10 ** 18;
 
     // Base participation params
     uint256 public participationAmountMin; // 100 USD (6 decimals), set in initialize()
@@ -726,8 +726,11 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
 
                 users[referrer].directReferralCount++;
 
-                // Initialize invitee's branchTokenBalance (always track, even before deposit)
-                if (branchTokenBalance[invitee] == 0 && inviteePreBalance > 0) {
+                // Initialize invitee's branchTokenBalance to actual balance at binding time.
+                // This corrects any drift caused by earlier callback failures (e.g. out-of-gas),
+                // where incremental delta updates to branchTokenBalance were missed.
+                // Before binding, invitee has no downstream, so branch = personal balance.
+                if (inviteePreBalance > 0) {
                     branchTokenBalance[invitee] = inviteePreBalance;
                 }
 
