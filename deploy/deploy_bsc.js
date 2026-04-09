@@ -132,13 +132,13 @@ async function deploy() {
 
     // ========== 分配代币（总量 100,000,000 ETIM）==========
     console.log("\n🆗. 分配代币...");
-    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("87900000"));
+    tx = await etimToken.connect(deployer).transfer(etimMainAddress, ethers.parseEther("84900000"));
     await tx.wait();
     tx = await etimToken.connect(deployer).transfer(marketInfra.address, ethers.parseEther("5000000"));
     await tx.wait();
     tx = await etimToken.connect(deployer).transfer(ecoFund.address, ethers.parseEther("1000000"));
     await tx.wait();
-    tx = await etimToken.connect(deployer).transfer(communityFund.address, ethers.parseEther("1000000"));
+    tx = await etimToken.connect(deployer).transfer(communityFund.address, ethers.parseEther("4000000"));
     await tx.wait();
     tx = await etimToken.connect(deployer).transfer(airdrop.address, ethers.parseEther("5000000"));
     await tx.wait();
