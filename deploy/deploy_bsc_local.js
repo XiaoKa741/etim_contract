@@ -2,7 +2,7 @@ const { ethers, upgrades } = require("hardhat");
 
 async function main() {
     // await deploy();
-    await addLiquidity();
+    // await addLiquidity();
     // await updateDailyPrice();
 }
 
