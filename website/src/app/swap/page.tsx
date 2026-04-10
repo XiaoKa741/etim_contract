@@ -10,7 +10,7 @@ import {
 } from 'wagmi';
 import { formatEther, parseEther, Address, encodeAbiParameters, encodePacked } from 'viem';
 import { ConnectButton } from '@/components/ConnectButton';
-import { CONTRACTS, UNIVERSAL_ROUTER, PERMIT2_ADDRESS, QUOTER } from '@/config/contracts';
+import { CONTRACTS, UNIVERSAL_ROUTER, PERMIT2_ADDRESS, CL_QUOTER as QUOTER } from '@/config/contracts';
 import { ERC20ABI, UniversalRouterABI, QuoterABI, Permit2ABI } from '@/config/abis';
 
 const ETIMTokenAddress = CONTRACTS.ETIMToken as Address;
@@ -421,11 +421,12 @@ export default function SwapPage() {
             </div>
             <div className="flex items-center justify-between gap-3">
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={inputAmount}
-                onChange={(e) => { setInputAmount(e.target.value); setError(null); setWillRevert(null); }}
+                onChange={(e) => { const v = e.target.value; if (/^[0-9]*\.?[0-9]*$/.test(v)) { setInputAmount(v); setError(null); setWillRevert(null); } }}
                 placeholder="0"
-                className="bg-transparent text-4xl font-medium outline-none w-full text-white placeholder-gray-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="bg-transparent text-4xl font-medium outline-none w-full text-white placeholder-gray-600"
               />
               <button
                 onClick={handleSwitchTokens}

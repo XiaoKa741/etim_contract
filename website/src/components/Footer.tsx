@@ -27,7 +27,7 @@ export function Footer() {
                     {address}
                   </a>
                   <button
-                    onClick={() => navigator.clipboard.writeText(address)}
+                    onClick={() => { try { navigator.clipboard.writeText(address); } catch {} }}
                     className="text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
                     title="Copy"
                   >

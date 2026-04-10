@@ -150,7 +150,7 @@ export default function DashboardPage() {
                 {CONTRACTS.ETIMMain}
               </code>
               <button
-                onClick={() => navigator.clipboard.writeText(CONTRACTS.ETIMMain)}
+                onClick={() => { try { navigator.clipboard.writeText(CONTRACTS.ETIMMain); } catch {} }}
                 className="text-yellow-400 hover:text-yellow-300 text-xs transition-colors shrink-0"
                 title={t('dashboard.copyAddress')}
               >
