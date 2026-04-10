@@ -156,6 +156,7 @@ const en: TranslationDict = {
   'stats.etimPrice': 'ETIM Price',
   'stats.poolEth': 'Pool ETH',
   'stats.poolEtim': 'Pool ETIM',
+  'stats.dailyQuota': 'Daily Quota',
 
   // Footer
   'footer.description': 'Eternal Imprint — A decentralized mining and referral platform built on BNB Chain with PancakeSwap v4 integration.',
@@ -199,6 +200,9 @@ const en: TranslationDict = {
   'deposit.noReferral': 'No referral binding found. Please bind a referrer first (mutual ETIM transfer).',
   'deposit.rejected': 'Transaction was rejected.',
   'deposit.error': 'Transaction failed. Please try again.',
+  'deposit.dailyQuota': "Today's Deposit Quota",
+  'deposit.remaining': 'Remaining',
+  'deposit.quotaReached': "Today's quota has been reached. Please try again tomorrow.",
 
   // Vision
   'vision.title': 'Core Architecture',
@@ -369,6 +373,7 @@ const zh: TranslationDict = {
   'stats.etimPrice': 'ETIM 价格',
   'stats.poolEth': '池子 ETH',
   'stats.poolEtim': '池子 ETIM',
+  'stats.dailyQuota': '今日额度',
   'footer.description': '永恒印记 — 基于 BNB Chain 的去中心化挖矿与推荐平台，集成 PancakeSwap v4。',
   'footer.contracts': '合约',
   'footer.links': '链接',
@@ -405,6 +410,9 @@ const zh: TranslationDict = {
   'deposit.noReferral': '未找到推荐关系。请先绑定推荐人（双方互转 ETIM）。',
   'deposit.rejected': '交易已被拒绝。',
   'deposit.error': '交易失败，请重试。',
+  'deposit.dailyQuota': '今日存入额度',
+  'deposit.remaining': '剩余',
+  'deposit.quotaReached': '今日额度已用完，请明天再试。',
 
   'vision.title': '核心架构',
   'vision.subtitle': 'ETIM 以聚合思维打破场景孤岛，深度融合 SocialFi + GameFi + VideoFi + DePIN，先进 AI 技术全面赋能。',
@@ -572,6 +580,7 @@ const ja: TranslationDict = {
   'stats.etimPrice': 'ETIM 価格',
   'stats.poolEth': 'プール ETH',
   'stats.poolEtim': 'プール ETIM',
+  'stats.dailyQuota': '本日の枠',
   'footer.description': 'Eternal Imprint — PancakeSwap v4統合のBNB Chain上の分散型マイニング・リファラルプラットフォーム。',
   'footer.contracts': 'コントラクト',
   'footer.links': 'リンク',
@@ -608,6 +617,9 @@ const ja: TranslationDict = {
   'deposit.noReferral': 'リファラルバインディングが見つかりません。先にリファラーをバインドしてください（相互ETIMトランスファー）。',
   'deposit.rejected': 'トランザクションが拒否されました。',
   'deposit.error': 'トランザクションが失敗しました。再試行してください。',
+  'deposit.dailyQuota': '本日の預入枠',
+  'deposit.remaining': '残り',
+  'deposit.quotaReached': '本日の枠は使い切りました。明日再度お試しください。',
 
   'vision.title': 'コアアーキテクチャ',
   'vision.subtitle': 'ETIMは統合思考でシーンの孤島を打破し、SocialFi + GameFi + VideoFi + DePINを深く融合、最先端AIテクノロジーで全面的に強化。',
@@ -775,6 +787,7 @@ const ko: TranslationDict = {
   'stats.etimPrice': 'ETIM 가격',
   'stats.poolEth': '풀 ETH',
   'stats.poolEtim': '풀 ETIM',
+  'stats.dailyQuota': '오늘 한도',
   'footer.description': 'Eternal Imprint — PancakeSwap v4 통합 BNB Chain 기반 탈중앙화 마이닝 & 추천 플랫폼.',
   'footer.contracts': '컨트랙트',
   'footer.links': '링크',
@@ -811,6 +824,9 @@ const ko: TranslationDict = {
   'deposit.noReferral': '추천 바인딩을 찾을 수 없습니다. 먼저 추천인을 바인딩하세요 (상호 ETIM 전송).',
   'deposit.rejected': '트랜잭션이 거부되었습니다.',
   'deposit.error': '트랜잭션이 실패했습니다. 다시 시도하세요.',
+  'deposit.dailyQuota': '오늘의 예치 한도',
+  'deposit.remaining': '남은',
+  'deposit.quotaReached': '오늘의 한도가 소진되었습니다. 내일 다시 시도하세요.',
 
   'vision.title': '핵심 아키텍처',
   'vision.subtitle': 'ETIM은 통합적 사고로 씬의 고립을 타파하고 SocialFi + GameFi + VideoFi + DePIN을 깊이 융합, 최첨단 AI 기술로 전면 강화.',
@@ -978,6 +994,7 @@ const es: TranslationDict = {
   'stats.etimPrice': 'Precio ETIM',
   'stats.poolEth': 'Pool ETH',
   'stats.poolEtim': 'Pool ETIM',
+  'stats.dailyQuota': 'Cuota diaria',
   'footer.description': 'Eternal Imprint — Plataforma descentralizada de minería y referidos en BNB Chain con integración PancakeSwap v4.',
   'footer.contracts': 'Contratos',
   'footer.links': 'Enlaces',
@@ -1014,6 +1031,9 @@ const es: TranslationDict = {
   'deposit.noReferral': 'No se encontró vínculo de referido. Por favor vincule un referente primero (transferencia mutua de ETIM).',
   'deposit.rejected': 'Transacción rechazada.',
   'deposit.error': 'Transacción fallida. Por favor intente de nuevo.',
+  'deposit.dailyQuota': 'Cuota de depósito de hoy',
+  'deposit.remaining': 'Restante',
+  'deposit.quotaReached': 'La cuota de hoy se ha agotado. Intente de nuevo mañana.',
 
   'vision.title': 'Arquitectura Central',
   'vision.subtitle': 'ETIM rompe los silos del entretenimiento digital con pensamiento agregado, fusionando profundamente SocialFi + GameFi + VideoFi + DePIN, potenciado por tecnología IA de vanguardia.',
@@ -1181,6 +1201,7 @@ const zhTW: TranslationDict = {
   'stats.etimPrice': 'ETIM 價格',
   'stats.poolEth': '池子 ETH',
   'stats.poolEtim': '池子 ETIM',
+  'stats.dailyQuota': '今日額度',
   'footer.description': '永恆印記 — 基於 BNB Chain 的去中心化挖礦與推薦平台，整合 PancakeSwap v4。',
   'footer.contracts': '合約',
   'footer.links': '連結',
@@ -1217,6 +1238,9 @@ const zhTW: TranslationDict = {
   'deposit.noReferral': '未找到推薦關係。請先綁定推薦人（雙方互轉 ETIM）。',
   'deposit.rejected': '交易已被拒絕。',
   'deposit.error': '交易失敗，請重試。',
+  'deposit.dailyQuota': '今日存入額度',
+  'deposit.remaining': '剩餘',
+  'deposit.quotaReached': '今日額度已用完，請明天再試。',
 
   'vision.title': '核心架構',
   'vision.subtitle': 'ETIM 以聚合思維打破場景孤島，深度融合 SocialFi + GameFi + VideoFi + DePIN，先進 AI 技術全面賦能。',

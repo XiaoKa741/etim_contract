@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { CONTRACTS } from '@/config/contracts';
 import { ETIMMainABI } from '@/config/abis';
 import { useTranslation } from '@/lib/i18n';
+import { useGlobalStats } from '@/hooks/useGlobalStats';
 
 // BSC bridged ETH (WETH) address
 const WETH_ADDRESS = '0x2170Ed0880ac9A755fd29B2688956BD959F933F8' as const;
@@ -24,6 +25,7 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
   const { address } = useAccount();
   const [amount, setAmount] = useState('');
   const [step, setStep] = useState<'approve' | 'deposit'>('approve');
+  const { dailyQuotaUsed, dailyQuotaLimit, dailyQuotaPercent } = useGlobalStats();
 
   const queryClient = useQueryClient();
 
@@ -178,6 +180,45 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
               )}
             </div>
           </div>
+
+          {/* Daily deposit quota progress bar */}
+          {dailyQuotaLimit !== undefined && dailyQuotaLimit > 0n && (
+            <div className="bg-gray-900/50 rounded-lg p-3 mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-gray-400">{t('deposit.dailyQuota')}</span>
+                <span className="text-xs text-gray-300">
+                  {Number(formatEther(dailyQuotaUsed ?? 0n)).toFixed(2)} / {Number(formatEther(dailyQuotaLimit)).toFixed(2)} ETH
+                </span>
+              </div>
+              <div className="w-full h-2.5 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    (dailyQuotaPercent ?? 0) >= 90 ? 'bg-red-500' :
+                    (dailyQuotaPercent ?? 0) >= 70 ? 'bg-yellow-500' :
+                    'bg-green-500'
+                  }`}
+                  style={{ width: `${Math.min(dailyQuotaPercent ?? 0, 100)}%` }}
+                />
+              </div>
+              <div className="flex justify-between items-center mt-1.5">
+                <span className="text-xs text-gray-500">
+                  {t('deposit.remaining')}: {Number(formatEther((dailyQuotaLimit) - (dailyQuotaUsed ?? 0n))).toFixed(4)} ETH
+                </span>
+                <span className={`text-xs font-medium ${
+                  (dailyQuotaPercent ?? 0) >= 90 ? 'text-red-400' :
+                  (dailyQuotaPercent ?? 0) >= 70 ? 'text-yellow-400' :
+                  'text-green-400'
+                }`}>
+                  {(dailyQuotaPercent ?? 0).toFixed(1)}%
+                </span>
+              </div>
+              {(dailyQuotaPercent ?? 0) >= 100 && (
+                <p className="text-red-400 text-xs mt-2 text-center font-medium">
+                  {t('deposit.quotaReached')}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Range info */}
           <div className="bg-gray-900/50 rounded-lg p-3 mb-4 space-y-1">

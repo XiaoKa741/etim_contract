@@ -5,7 +5,7 @@ import { useGlobalStats } from '@/hooks/useGlobalStats';
 import { useTranslation } from '@/lib/i18n';
 
 export function StatsCard() {
-  const { totalUsers, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool, poolEthReserves, poolEtimReserves, etimPriceInUsd } = useGlobalStats();
+  const { totalUsers, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool, poolEthReserves, poolEtimReserves, etimPriceInUsd, dailyQuotaUsed, dailyQuotaLimit, dailyQuotaPercent } = useGlobalStats();
   const { t } = useTranslation();
 
   const stats = [
@@ -19,6 +19,9 @@ export function StatsCard() {
     { label: t('stats.etimPrice'), value: etimPriceInUsd !== undefined ? `$${etimPriceInUsd < 0.0001 ? etimPriceInUsd.toExponential(2) : etimPriceInUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}` : '—' },
     { label: t('stats.poolEth'), value: poolEthReserves !== undefined ? `${Number(formatEther(poolEthReserves)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ETH` : '—' },
     { label: t('stats.poolEtim'), value: poolEtimReserves !== undefined ? `${Number(formatEther(poolEtimReserves)).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETIM` : '—' },
+    { label: t('stats.dailyQuota'), value: dailyQuotaLimit !== undefined && dailyQuotaLimit > 0n
+      ? `${Number(formatEther(dailyQuotaUsed ?? 0n)).toFixed(2)} / ${Number(formatEther(dailyQuotaLimit)).toFixed(2)} ETH (${(dailyQuotaPercent ?? 0).toFixed(1)}%)`
+      : '—' },
   ];
 
   return (

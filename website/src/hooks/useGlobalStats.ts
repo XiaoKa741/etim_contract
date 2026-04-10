@@ -71,6 +71,37 @@ export function useGlobalStats() {
     functionName: 'ethPriceInUsd',
   });
 
+  // Daily deposit limit reads
+  const { data: dailyDepositTotal } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'dailyDepositTotal',
+  });
+
+  const { data: dailyDepositDay } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'dailyDepositDay',
+  });
+
+  const { data: dailyDepositLimit } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'dailyDepositLimit',
+  });
+
+  const { data: dailyDepositCap } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'dailyDepositCap',
+  });
+
+  const { data: dailyDepositRate } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'dailyDepositRate',
+  });
+
   // Calculate ETIM reserves: ethReserves * etimPerEth / 1e18
   const poolEtimReserves = poolEthReserves !== undefined && etimPerEth !== undefined
     ? (poolEthReserves as bigint) * (etimPerEth as bigint) / (10n ** 18n)
@@ -81,6 +112,34 @@ export function useGlobalStats() {
   // result = ethPriceInUsd * 1e18 / etimPerEth / 1e6 => USD value (float)
   const etimPriceInUsd = ethPriceInUsd !== undefined && etimPerEth !== undefined && (etimPerEth as bigint) > BigInt(0)
     ? Number(ethPriceInUsd as bigint) / Number(etimPerEth as bigint) * 1e12
+    : undefined;
+
+  // Calculate daily deposit quota (replicate contract logic from ETIMMain.sol:294-309)
+  const FEE_DENOMINATOR = 1000n;
+  let dailyQuotaUsed: bigint | undefined;
+  let dailyQuotaLimit: bigint | undefined;
+
+  if (dailyDepositDay !== undefined && dailyDepositTotal !== undefined) {
+    const currentDay = BigInt(Math.floor(Date.now() / 1000 / 86400));
+    // If on-chain day differs from current day, deposits have been reset to 0
+    dailyQuotaUsed = (dailyDepositDay as bigint) === currentDay
+      ? (dailyDepositTotal as bigint)
+      : 0n;
+  }
+
+  if (dailyDepositLimit !== undefined && dailyDepositCap !== undefined && dailyDepositRate !== undefined && poolEthReserves !== undefined) {
+    const limitVal = dailyDepositLimit as bigint;
+    if (limitVal !== 0n) {
+      dailyQuotaLimit = limitVal;
+    } else {
+      const capVal = dailyDepositCap as bigint;
+      const effectiveCap = capVal === 0n ? (poolEthReserves as bigint) : capVal;
+      dailyQuotaLimit = effectiveCap * (dailyDepositRate as bigint) / FEE_DENOMINATOR;
+    }
+  }
+
+  const dailyQuotaPercent = dailyQuotaUsed !== undefined && dailyQuotaLimit !== undefined && dailyQuotaLimit > 0n
+    ? Number(dailyQuotaUsed * 10000n / dailyQuotaLimit) / 100
     : undefined;
 
   return {
@@ -95,5 +154,8 @@ export function useGlobalStats() {
     poolEthReserves: poolEthReserves as bigint | undefined,
     poolEtimReserves,
     etimPriceInUsd,
+    dailyQuotaUsed,
+    dailyQuotaLimit,
+    dailyQuotaPercent,
   };
 }
