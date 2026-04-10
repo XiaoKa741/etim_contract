@@ -39,8 +39,8 @@ export function useLevelConditions() {
           return {
             level: `S${i}`,
             referrals: Number(referrals),
-            personal: Number(personal / BigInt(1e18)).toLocaleString(),
-            team: Number(team / BigInt(1e18)).toLocaleString(),
+            personal: Number(personal / (10n ** 18n)).toLocaleString(),
+            team: Number(team / (10n ** 18n)).toLocaleString(),
             acceleration: `${acceleration}%`,
           };
         }

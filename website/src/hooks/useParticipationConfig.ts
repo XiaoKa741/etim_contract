@@ -33,15 +33,15 @@ export function useParticipationConfig() {
   // ethPriceInUsd: 6 decimals, participation amounts: 6 decimals
   // ETH amount = (USD amount * 10^18) / ethPriceInUsd
   const minEth = ethPriceInUsd && participationAmountMin
-    ? (BigInt(participationAmountMin.toString()) * BigInt(10 ** 18)) / BigInt(ethPriceInUsd.toString())
+    ? (BigInt(participationAmountMin) * (10n ** 18n)) / BigInt(ethPriceInUsd)
     : undefined;
   const maxEth = ethPriceInUsd && participationAmountMax
-    ? (BigInt(participationAmountMax.toString()) * BigInt(10 ** 18)) / BigInt(ethPriceInUsd.toString())
+    ? (BigInt(participationAmountMax) * (10n ** 18n)) / BigInt(ethPriceInUsd)
     : undefined;
 
   // ETH per node quota (for node users)
   const ethPerNode = ethPriceInUsd && nodeQuota
-    ? (BigInt(nodeQuota.toString()) * BigInt(10 ** 18)) / BigInt(ethPriceInUsd.toString())
+    ? (BigInt(nodeQuota) * (10n ** 18n)) / BigInt(ethPriceInUsd)
     : undefined;
 
   // Format for display (ETH has 18 decimals), auto precision to avoid showing 0.0000

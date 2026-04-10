@@ -73,14 +73,14 @@ export function useGlobalStats() {
 
   // Calculate ETIM reserves: ethReserves * etimPerEth / 1e18
   const poolEtimReserves = poolEthReserves !== undefined && etimPerEth !== undefined
-    ? (poolEthReserves as bigint) * (etimPerEth as bigint) / BigInt(1e18)
+    ? (poolEthReserves as bigint) * (etimPerEth as bigint) / (10n ** 18n)
     : undefined;
 
   // Calculate ETIM price in USD: 1 ETIM = ethPriceInUsd / etimPerEth
   // ethPriceInUsd is 6 decimals, etimPerEth is 18 decimals
   // result = ethPriceInUsd * 1e18 / etimPerEth / 1e6 => USD value (float)
   const etimPriceInUsd = ethPriceInUsd !== undefined && etimPerEth !== undefined && (etimPerEth as bigint) > BigInt(0)
-    ? Number(ethPriceInUsd as bigint) * 1e18 / Number(etimPerEth as bigint) / 1e6
+    ? Number(ethPriceInUsd as bigint) / Number(etimPerEth as bigint) * 1e12
     : undefined;
 
   return {
