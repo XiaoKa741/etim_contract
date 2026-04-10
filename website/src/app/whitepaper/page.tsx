@@ -17,10 +17,10 @@ export default function WhitepaperPage() {
         <section>
           <h2 className="text-2xl font-bold text-white mb-4">1. {t('wp.overview')}</h2>
           <p className="text-gray-300 leading-relaxed">
-            ETIM (Eternal Imprint) is a decentralized participation and mining ecosystem built on Ethereum.
+            ETIM (Eternal Imprint) is a decentralized participation and mining ecosystem built on BNB Chain (BSC).
             Users deposit ETH to mine ETIM tokens through a growth pool mechanism. The system features a
             7-tier level structure (S0-S6), an on-chain referral network, Node NFTs for enhanced rewards,
-            and automated Uniswap v4 liquidity management with a built-in tax hook.
+            and automated PancakeSwap v4 liquidity management with a built-in tax hook.
           </p>
           <p className="text-gray-300 leading-relaxed mt-3">
             The protocol is designed to be fully on-chain with no centralized control over user funds.
@@ -63,11 +63,11 @@ export default function WhitepaperPage() {
             <li>Base daily mining rate: 0.1% of principal USD value</li>
             <li>Higher levels provide acceleration bonuses (up to +21% at S6)</li>
             <li>Mining continues until the claimed USD value equals the invested USD value</li>
-            <li>Once the growth pool is depleted, Uniswap trading is unlocked</li>
+            <li>Once the growth pool is depleted, PancakeSwap trading is unlocked</li>
           </ul>
           <h3 className="text-lg font-semibold text-white mt-6 mb-3">ETH Deposit Allocation</h3>
           <ul className="list-disc list-inside text-gray-300 space-y-2">
-            <li><strong className="text-white">69%</strong> — Uniswap liquidity pool injection</li>
+            <li><strong className="text-white">69%</strong> — PancakeSwap liquidity pool injection</li>
             <li><strong className="text-white">25%</strong> — Token burn (sent to dead address)</li>
             <li><strong className="text-white">2.5%</strong> — S2+ player ETH dividends</li>
             <li><strong className="text-white">1.5%</strong> — Foundation rewards</li>
@@ -128,7 +128,7 @@ export default function WhitepaperPage() {
           <ul className="list-disc list-inside text-gray-300 space-y-2">
             <li>Buy fee: 3% — Distributed to rewards pools</li>
             <li>Sell fee: 3% — Distributed to rewards pools</li>
-            <li>69% of deposits automatically inject into Uniswap LP</li>
+            <li>69% of deposits automatically inject into PancakeSwap LP</li>
             <li>25% of deposits used to buy and burn ETIM</li>
             <li>Trading unlocks only after the growth pool is depleted</li>
           </ul>
@@ -140,7 +140,7 @@ export default function WhitepaperPage() {
             {Object.entries(CONTRACTS).map(([name, address]) => (
               <div key={name} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
                 <span className="text-gray-400 text-sm w-36">{name}</span>
-                <a href={`https://etherscan.io/address/${address}`} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 font-mono text-sm break-all">{address}</a>
+                <a href={`https://bscscan.com/address/${address}`} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 font-mono text-sm break-all">{address}</a>
               </div>
             ))}
           </div>

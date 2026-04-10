@@ -10,7 +10,7 @@ const placeholders = [
   { title: 'Mining Dashboard Preview', color: 'from-pink-600 to-rose-600' },
   { title: 'Token Burn Event', color: 'from-red-600 to-orange-600' },
   { title: 'S6 Achievement Banner', color: 'from-yellow-600 to-amber-600' },
-  { title: 'Uniswap v4 Integration', color: 'from-purple-600 to-indigo-600' },
+  { title: 'PancakeSwap v4 Integration', color: 'from-purple-600 to-indigo-600' },
   { title: 'Referral Program', color: 'from-cyan-600 to-blue-600' },
   { title: 'ETIM Ecosystem Map', color: 'from-emerald-600 to-green-600' },
   { title: 'Level System Infographic', color: 'from-violet-600 to-purple-600' },

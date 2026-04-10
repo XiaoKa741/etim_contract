@@ -523,12 +523,12 @@ export default function SwapPage() {
           <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-xl">
             <p className="text-green-400 text-sm">Swap successful!</p>
             <a
-              href={`https://etherscan.io/tx/${successTxHash}`}
+              href={`https://bscscan.com/tx/${successTxHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-green-300 text-xs underline hover:text-green-200"
             >
-              View on Etherscan →
+              View on BscScan →
             </a>
           </div>
         )}
@@ -537,9 +537,9 @@ export default function SwapPage() {
         {timeoutHash && !isSwapSuccess && !isSwapError && (
           <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
             <p className="text-blue-400 text-sm">Transaction submitted. Waiting for confirmation...</p>
-            <p className="text-gray-400 text-xs mt-1">Check status on Etherscan:</p>
+            <p className="text-gray-400 text-xs mt-1">Check status on BscScan:</p>
             <a
-              href={`https://etherscan.io/tx/${timeoutHash}`}
+              href={`https://bscscan.com/tx/${timeoutHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-300 text-xs underline hover:text-blue-200 font-mono break-all"

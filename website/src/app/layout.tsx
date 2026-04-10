@@ -18,7 +18,7 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: "ETIM — Eternal Imprint",
-  description: "Decentralized mining and referral platform on Ethereum. Connect your wallet to participate in the ETIM ecosystem.",
+  description: "Decentralized mining and referral platform on BNB Chain. Connect your wallet to participate in the ETIM ecosystem.",
 };
 
 export default function RootLayout({
