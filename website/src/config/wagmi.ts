@@ -16,8 +16,8 @@ export const config = createConfig({
     [bsc.id]: http(RPC_URL),
   },
   ssr: true,
-  // Poll every 2 seconds for transaction receipts
-  pollingInterval: 2_000,
+  // Poll every 15 seconds for background updates (transaction receipts use their own faster polling)
+  pollingInterval: 15_000,
   storage: createStorage({
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
   }),
