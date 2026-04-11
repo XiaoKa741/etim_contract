@@ -3,12 +3,14 @@
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useEffect } from 'react';
 import { useTranslation } from '@/lib/i18n';
+import { useNetworkGuard } from '@/hooks/useNetworkGuard';
 
 export function ConnectButton({ label }: { label?: string }) {
   const { address, isConnected, isReconnecting } = useAccount();
   const { connect, connectors, isPending, error, reset } = useConnect();
   const { disconnect } = useDisconnect();
   const { t } = useTranslation();
+  const { isWrongNetwork, switchToBsc, isSwitching } = useNetworkGuard();
 
   useEffect(() => {
     if (error) {
@@ -25,6 +27,27 @@ export function ConnectButton({ label }: { label?: string }) {
   }
 
   if (isConnected && address) {
+    // Wrong network: show switch button
+    if (isWrongNetwork) {
+      return (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={switchToBsc}
+            disabled={isSwitching}
+            className="text-sm text-white px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:bg-red-800 transition-colors font-semibold animate-pulse"
+          >
+            {isSwitching ? t('connect.switching') : t('connect.switchBsc')}
+          </button>
+          <button
+            onClick={() => disconnect()}
+            className="text-sm text-gray-400 hover:text-white px-3 py-2 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors"
+          >
+            {t('connect.disconnect')}
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-300 font-mono bg-gray-800 px-3 py-2 rounded-lg">

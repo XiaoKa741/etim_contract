@@ -8,6 +8,7 @@ import { CONTRACTS } from '@/config/contracts';
 import { ETIMMainABI } from '@/config/abis';
 import { useTranslation } from '@/lib/i18n';
 import { useGlobalStats } from '@/hooks/useGlobalStats';
+import { useNetworkGuard } from '@/hooks/useNetworkGuard';
 
 // BSC bridged ETH (WETH) address
 const WETH_ADDRESS = '0x2170Ed0880ac9A755fd29B2688956BD959F933F8' as const;
@@ -26,6 +27,7 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
   const [amount, setAmount] = useState('');
   const [step, setStep] = useState<'approve' | 'deposit'>('approve');
   const { dailyQuotaUsed, dailyQuotaLimit, dailyQuotaPercent } = useGlobalStats();
+  const { isWrongNetwork, switchToBsc, isSwitching } = useNetworkGuard();
 
   const queryClient = useQueryClient();
 
@@ -97,6 +99,7 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
 
   const handleApprove = () => {
     if (!amountWei) return;
+    if (isWrongNetwork) { switchToBsc(); return; }
     setStep('approve');
     writeApprove({
       address: WETH_ADDRESS,
@@ -108,6 +111,7 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
 
   const handleDeposit = () => {
     if (!amountWei) return;
+    if (isWrongNetwork) { switchToBsc(); return; }
     setStep('deposit');
     writeDeposit({
       address: CONTRACTS.ETIMMain,

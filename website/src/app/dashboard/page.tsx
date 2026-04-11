@@ -14,6 +14,7 @@ import { StatsCard } from '@/components/StatsCard';
 import { DepositCard } from '@/components/DepositCard';
 import { useTranslation } from '@/lib/i18n';
 import { CONTRACTS } from '@/config/contracts';
+import { useNetworkGuard } from '@/hooks/useNetworkGuard';
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
@@ -21,6 +22,7 @@ export default function DashboardPage() {
   const { miningReward, nodeReward, s2PlusReward, s3PlusReward, s6Reward } = useClaimable(address);
   const { t } = useTranslation();
   const config = useParticipationConfig();
+  const { isWrongNetwork, switchToBsc, isSwitching } = useNetworkGuard();
 
   if (!isConnected) {
     return (
@@ -68,6 +70,22 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {isWrongNetwork && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-red-400 text-sm font-semibold">{t('network.wrongNetwork')}</p>
+            <p className="text-red-400/70 text-xs mt-1">{t('network.switchDesc')}</p>
+          </div>
+          <button
+            onClick={switchToBsc}
+            disabled={isSwitching}
+            className="px-5 py-2 bg-red-600 hover:bg-red-500 disabled:bg-red-800 text-white text-sm font-semibold rounded-lg transition-colors shrink-0"
+          >
+            {isSwitching ? t('connect.switching') : t('connect.switchBsc')}
+          </button>
+        </div>
+      )}
 
       {!user?.isParticipant && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-5 mb-6">

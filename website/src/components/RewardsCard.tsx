@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { CONTRACTS } from '@/config/contracts';
 import { ETIMMainABI } from '@/config/abis';
 import { useTranslation } from '@/lib/i18n';
+import { useNetworkGuard } from '@/hooks/useNetworkGuard';
 
 interface RewardsCardProps {
   miningReward: bigint;
@@ -30,6 +31,7 @@ function ClaimButton({ label, amount, unit, functionName, disabled }: {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { isWrongNetwork, switchToBsc, isSwitching } = useNetworkGuard();
 
   useEffect(() => {
     if (isSuccess) {
@@ -38,6 +40,10 @@ function ClaimButton({ label, amount, unit, functionName, disabled }: {
   }, [isSuccess, queryClient]);
 
   const handleClaim = () => {
+    if (isWrongNetwork) {
+      switchToBsc();
+      return;
+    }
     writeContract({ address: CONTRACTS.ETIMMain, abi: ETIMMainABI, functionName });
   };
 
