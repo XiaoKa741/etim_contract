@@ -185,8 +185,16 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
             </div>
           </div>
 
-          {/* Daily deposit quota progress bar */}
-          {dailyQuotaLimit !== undefined && dailyQuotaLimit > 0n && (
+           {/* Daily deposit quota progress bar */}
+          {dailyQuotaLimit !== undefined && dailyQuotaLimit > 0n && (() => {
+            // Calculate next UTC 0:00 in user's local time
+            const now = new Date();
+            const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+            const resetTimeStr = nextUtcMidnight.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const hoursLeft = Math.max(0, Math.floor((nextUtcMidnight.getTime() - now.getTime()) / 3600000));
+            const minsLeft = Math.max(0, Math.floor(((nextUtcMidnight.getTime() - now.getTime()) % 3600000) / 60000));
+
+            return (
             <div className="bg-gray-900/50 rounded-lg p-3 mb-4">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-gray-400">{t('deposit.dailyQuota')}</span>
@@ -216,13 +224,17 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
                   {(dailyQuotaPercent ?? 0).toFixed(1)}%
                 </span>
               </div>
+              <div className="text-xs text-gray-500 mt-1.5 text-center">
+                {t('deposit.resetTime')}: {resetTimeStr} ({hoursLeft}h {minsLeft}m)
+              </div>
               {(dailyQuotaPercent ?? 0) >= 100 && (
                 <p className="text-red-400 text-xs mt-2 text-center font-medium">
                   {t('deposit.quotaReached')}
                 </p>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* Range info */}
           <div className="bg-gray-900/50 rounded-lg p-3 mb-4 space-y-1">

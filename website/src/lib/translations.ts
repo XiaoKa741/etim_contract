@@ -161,6 +161,7 @@ const en: TranslationDict = {
   'stats.poolEth': 'Pool ETH',
   'stats.poolEtim': 'Pool ETIM',
   'stats.dailyQuota': 'Daily Quota',
+  'stats.resetInfo': 'Daily quota & rewards reset at',
 
   // Footer
   'footer.description': 'Eternal Imprint — A decentralized mining and referral platform built on BNB Chain with PancakeSwap v4 integration.',
@@ -207,6 +208,7 @@ const en: TranslationDict = {
   'deposit.dailyQuota': "Today's Deposit Quota",
   'deposit.remaining': 'Remaining',
   'deposit.quotaReached': "Today's quota has been reached. Please try again tomorrow.",
+  'deposit.resetTime': 'Resets at',
 
   // Vision
   'vision.title': 'Core Architecture',
@@ -382,6 +384,7 @@ const zh: TranslationDict = {
   'stats.poolEth': '池子 ETH',
   'stats.poolEtim': '池子 ETIM',
   'stats.dailyQuota': '今日额度',
+  'stats.resetInfo': '每日额度和奖励重置时间',
   'footer.description': '永恒印记 — 基于 BNB Chain 的去中心化挖矿与推荐平台，集成 PancakeSwap v4。',
   'footer.contracts': '合约',
   'footer.links': '链接',
@@ -421,6 +424,7 @@ const zh: TranslationDict = {
   'deposit.dailyQuota': '今日存入额度',
   'deposit.remaining': '剩余',
   'deposit.quotaReached': '今日额度已用完，请明天再试。',
+  'deposit.resetTime': '重置时间',
 
   'vision.title': '核心架构',
   'vision.subtitle': 'ETIM 以聚合思维打破场景孤岛，深度融合 SocialFi + GameFi + VideoFi + DePIN，先进 AI 技术全面赋能。',
@@ -593,6 +597,7 @@ const ja: TranslationDict = {
   'stats.poolEth': 'プール ETH',
   'stats.poolEtim': 'プール ETIM',
   'stats.dailyQuota': '本日の枠',
+  'stats.resetInfo': '日次枠とリワードのリセット時間',
   'footer.description': 'Eternal Imprint — PancakeSwap v4統合のBNB Chain上の分散型マイニング・リファラルプラットフォーム。',
   'footer.contracts': 'コントラクト',
   'footer.links': 'リンク',
@@ -632,6 +637,7 @@ const ja: TranslationDict = {
   'deposit.dailyQuota': '本日の預入枠',
   'deposit.remaining': '残り',
   'deposit.quotaReached': '本日の枠は使い切りました。明日再度お試しください。',
+  'deposit.resetTime': 'リセット時間',
 
   'vision.title': 'コアアーキテクチャ',
   'vision.subtitle': 'ETIMは統合思考でシーンの孤島を打破し、SocialFi + GameFi + VideoFi + DePINを深く融合、最先端AIテクノロジーで全面的に強化。',
@@ -804,6 +810,7 @@ const ko: TranslationDict = {
   'stats.poolEth': '풀 ETH',
   'stats.poolEtim': '풀 ETIM',
   'stats.dailyQuota': '오늘 한도',
+  'stats.resetInfo': '일일 한도 및 보상 초기화 시간',
   'footer.description': 'Eternal Imprint — PancakeSwap v4 통합 BNB Chain 기반 탈중앙화 마이닝 & 추천 플랫폼.',
   'footer.contracts': '컨트랙트',
   'footer.links': '링크',
@@ -843,6 +850,7 @@ const ko: TranslationDict = {
   'deposit.dailyQuota': '오늘의 예치 한도',
   'deposit.remaining': '남은',
   'deposit.quotaReached': '오늘의 한도가 소진되었습니다. 내일 다시 시도하세요.',
+  'deposit.resetTime': '초기화 시간',
 
   'vision.title': '핵심 아키텍처',
   'vision.subtitle': 'ETIM은 통합적 사고로 씬의 고립을 타파하고 SocialFi + GameFi + VideoFi + DePIN을 깊이 융합, 최첨단 AI 기술로 전면 강화.',
@@ -1015,6 +1023,7 @@ const es: TranslationDict = {
   'stats.poolEth': 'Pool ETH',
   'stats.poolEtim': 'Pool ETIM',
   'stats.dailyQuota': 'Cuota diaria',
+  'stats.resetInfo': 'Cuota diaria y recompensas se reinician a las',
   'footer.description': 'Eternal Imprint — Plataforma descentralizada de minería y referidos en BNB Chain con integración PancakeSwap v4.',
   'footer.contracts': 'Contratos',
   'footer.links': 'Enlaces',
@@ -1054,6 +1063,7 @@ const es: TranslationDict = {
   'deposit.dailyQuota': 'Cuota de depósito de hoy',
   'deposit.remaining': 'Restante',
   'deposit.quotaReached': 'La cuota de hoy se ha agotado. Intente de nuevo mañana.',
+  'deposit.resetTime': 'Se reinicia a las',
 
   'vision.title': 'Arquitectura Central',
   'vision.subtitle': 'ETIM rompe los silos del entretenimiento digital con pensamiento agregado, fusionando profundamente SocialFi + GameFi + VideoFi + DePIN, potenciado por tecnología IA de vanguardia.',
@@ -1226,6 +1236,7 @@ const zhTW: TranslationDict = {
   'stats.poolEth': '池子 ETH',
   'stats.poolEtim': '池子 ETIM',
   'stats.dailyQuota': '今日額度',
+  'stats.resetInfo': '每日額度和獎勵重置時間',
   'footer.description': '永恆印記 — 基於 BNB Chain 的去中心化挖礦與推薦平台，整合 PancakeSwap v4。',
   'footer.contracts': '合約',
   'footer.links': '連結',
@@ -1265,6 +1276,7 @@ const zhTW: TranslationDict = {
   'deposit.dailyQuota': '今日存入額度',
   'deposit.remaining': '剩餘',
   'deposit.quotaReached': '今日額度已用完，請明天再試。',
+  'deposit.resetTime': '重置時間',
 
   'vision.title': '核心架構',
   'vision.subtitle': 'ETIM 以聚合思維打破場景孤島，深度融合 SocialFi + GameFi + VideoFi + DePIN，先進 AI 技術全面賦能。',

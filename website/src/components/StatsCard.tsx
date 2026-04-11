@@ -24,6 +24,13 @@ export function StatsCard() {
       : '—' },
   ];
 
+  // Calculate reset time in user's local timezone (UTC 0:00)
+  const now = new Date();
+  const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const resetTimeStr = nextUtcMidnight.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const hoursLeft = Math.max(0, Math.floor((nextUtcMidnight.getTime() - now.getTime()) / 3600000));
+  const minsLeft = Math.max(0, Math.floor(((nextUtcMidnight.getTime() - now.getTime()) % 3600000) / 60000));
+
   return (
     <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
       <div className="flex items-center justify-between mb-6">
@@ -41,6 +48,9 @@ export function StatsCard() {
             <div className="text-lg font-bold text-white">{stat.value}</div>
           </div>
         ))}
+      </div>
+      <div className="mt-4 pt-3 border-t border-gray-700/50 text-xs text-gray-500 text-center">
+        {t('stats.resetInfo')}: {resetTimeStr} ({hoursLeft}h {minsLeft}m)
       </div>
     </div>
   );
