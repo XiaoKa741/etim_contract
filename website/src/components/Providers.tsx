@@ -14,13 +14,14 @@ function NetworkAutoSwitch() {
   const hasSwitched = useRef(false);
 
   useEffect(() => {
-    if (isConnected && chain && chain.id !== bsc.id && !hasSwitched.current) {
+    // chain is undefined when wallet is on an unsupported network (e.g. Ethereum)
+    // since wagmi config only includes BSC
+    if (isConnected && (!chain || chain.id !== bsc.id) && !hasSwitched.current) {
       hasSwitched.current = true;
       try {
         switchChain({ chainId: bsc.id });
       } catch {}
     }
-    // Reset flag when disconnected so it triggers again on next connect
     if (!isConnected) {
       hasSwitched.current = false;
     }
