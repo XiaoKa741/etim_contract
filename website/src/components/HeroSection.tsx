@@ -30,17 +30,16 @@ export function HeroSection() {
       <div className="max-w-7xl mx-auto px-6 sm:px-6 lg:px-8 text-center">
         <button
           onClick={copyMainContract}
-          className="mx-auto mb-4 w-full max-w-2xl bg-gray-900/60 border border-indigo-500/30 hover:border-indigo-400/60 rounded-xl px-4 py-3 transition-colors"
+          className="relative mx-auto mb-8 w-full max-w-2xl bg-gray-900/60 border border-indigo-500/30 hover:border-indigo-400/60 rounded-xl px-4 py-3 transition-colors"
         >
+          <span className="absolute top-3 right-3 inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-3 py-1 text-sm font-medium text-emerald-300">
+            <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+            BNB
+          </span>
           <div className="text-sm sm:text-base text-gray-300 mb-1">{t('hero.mainContract')}</div>
           <div className="text-sm sm:text-base font-medium text-indigo-200 break-all">{CONTRACTS.ETIMMain}</div>
           <div className="mt-1 text-xs sm:text-sm text-green-400">{copied ? t('hero.copied') : t('hero.tapToCopy')}</div>
         </button>
-
-        <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full px-4 py-1.5 mb-8">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <span className="text-indigo-300 text-sm">{t('hero.badge')}</span>
-        </div>
 
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-4">
           <span className="bg-gradient-to-r from-white via-indigo-200 to-purple-200 bg-clip-text text-transparent">
