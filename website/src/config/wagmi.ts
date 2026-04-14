@@ -1,11 +1,17 @@
 'use client';
 
-import { createConfig, createStorage, http } from 'wagmi';
+import { createConfig, createStorage, fallback, http } from 'wagmi';
 import { bsc } from 'wagmi/chains';
 import { injected } from 'wagmi/connectors';
 
-// Free BSC RPC endpoints
-const RPC_URL = 'https://bsc-dataseed1.binance.org';
+// BSC RPC fallback list (better availability in different regions)
+const BSC_RPC_URLS = [
+  'https://bsc-dataseed1.binance.org',
+  'https://bsc-dataseed.binance.org',
+  'https://bsc-rpc.publicnode.com',
+  'https://1rpc.io/bnb',
+  'https://binance.llamarpc.com',
+] as const;
 
 export const config = createConfig({
   chains: [bsc],
@@ -13,7 +19,10 @@ export const config = createConfig({
     injected({ shimDisconnect: true }),
   ],
   transports: {
-    [bsc.id]: http(RPC_URL),
+    [bsc.id]: fallback(
+      BSC_RPC_URLS.map((url) => http(url, { timeout: 8_000 })),
+      { rank: false }
+    ),
   },
   ssr: true,
   // Poll every 15 seconds for background updates (transaction receipts use their own faster polling)
