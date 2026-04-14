@@ -226,8 +226,8 @@ async function addLiquidity() {
     const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";  // WBNB
     const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
 
-    const ETIMTokenAddress = "0xCC2C1eB57bc4da75587fB513d7b1f20c62b9C863";
-    const ETIMPoolAddress = "0xE2B0ec1D2bdb23431865534e1BCffd8845F5D3B4";
+    const ETIMTokenAddress = "0x9d6403f24A89BaBa56939BBcE4FA0233f1d5E418";
+    const ETIMPoolAddress = "0x3e15dEd17eA481cbcEa4A573EaFd5a779B42063C";
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
     const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
@@ -292,7 +292,7 @@ async function updateDailyPrice() {
 
     const [deployer] = await ethers.getSigners();
 
-    const ETIMMainAddress = ""; // 替换为实际地址
+    const ETIMMainAddress = "0x8f548f98c1C6deeD34287D550A6bb907d2906200"; // 替换为实际地址
     const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
 
     let tx = await etimMain.connect(deployer).updateDailyPrice();

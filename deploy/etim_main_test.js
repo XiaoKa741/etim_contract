@@ -2,17 +2,17 @@
 const { ethers } = require("hardhat");
 
 // forking
-const ETIMMainAddress = '0x4457eEb3f3E0AB10B1340aCb7818fF2838E3B41b';
-const ETIMTokenAddress = '0xCC2C1eB57bc4da75587fB513d7b1f20c62b9C863';
-const ETIMNodeAddress = '0x308B07DA84DBafAA4CA862ce7EB85FA013f832D6';
-const ETIMPoolAddress = '0xE2B0ec1D2bdb23431865534e1BCffd8845F5D3B4';
-const ETIMHookAddress = '0xf0e19D44989F5C9E3F3c993AaA9D4Ff9f17c8440';
+const ETIMMainAddress = '0x8f548f98c1C6deeD34287D550A6bb907d2906200';
+const ETIMTokenAddress = '0x9d6403f24A89BaBa56939BBcE4FA0233f1d5E418';
+const ETIMNodeAddress = '0x58794e9886D309879ad064755e6f4374c54072BC';
+const ETIMPoolAddress = '0x3e15dEd17eA481cbcEa4A573EaFd5a779B42063C';
+const ETIMHookAddress = '0x1A2f81810D74F03D246Ea22D3455273353798440';
 const Permit2Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const PositionManagerAddress = '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e';
 const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
 
 async function main() {
-    const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
+    const etimMain = await ethers.getContractAt("ETIMMainV2", ETIMMainAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
     const etimNode = await ethers.getContractAt("ETIMNode", ETIMNodeAddress);
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
@@ -38,12 +38,14 @@ async function main() {
     // await tx.wait();
     // tx = await etimMain.setDailyDepositLimit(ethers.parseEther("10"));
     // await tx.wait();
+    // tx = await etimMain.setLpBurnAutoRatio(1000);
+    // await tx.wait();
 
     // console.log('etim per eth: ', ethers.formatEther(await etimMain.ethPriceInEtim()));
     // console.log('usdc per eth: ', ethers.formatUnits(await etimMain.ethPriceInUsd(), 6));
 
     // 相互转账1
-    // tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("10"));
+    // tx = await etimToken.connect(a).transfer(b.address, ethers.parseEther("1000"));
     // console.log((await tx.wait()).hash);
     // tx = await etimToken.connect(b).transfer(a.address, ethers.parseEther("10"));
     // console.log((await tx.wait()).hash);
@@ -53,10 +55,24 @@ async function main() {
     // console.log((await tx.wait()).hash);
     // tx = await etimToken.connect(b).transfer(d.address, ethers.parseEther("15"));
     // console.log((await tx.wait()).hash);
-    // tx = await etimToken.connect(c).transfer(b.address, ethers.parseEther("20"));
+    // tx = await etimToken.connect(c).transfer(b.address, ethers.parseEther("1"));
     // console.log((await tx.wait()).hash);
-    // tx = await etimToken.connect(d).transfer(b.address, ethers.parseEther("25"));
+    // tx = await etimToken.connect(d).transfer(b.address, ethers.parseEther("1"));
     // console.log((await tx.wait()).hash);
+
+    // await setTokenCallbackWhitelist(a, b, etimMain);
+    // await onTokenTransfer(b, etimMain, '0x7219D01758077CD4300F70e4593D78397593D1Ff', '0xED49776Ad4A6ed99292b837CA078F613ece2fD3E', ethers.parseEther("1"))
+    // await onTokenTransfer(b, etimMain, f.address, a.address, ethers.parseEther("1"))
+    // await setMyInvitee(a, ['0xB30367c033d2a18c4Bf70D377E76C7CFd938B571'], etimMain)
+    // {
+    //     await a.sendTransaction({
+    //         to: "0x7219D01758077CD4300F70e4593D78397593D1Ff",
+    //         value: ethers.parseEther("500")  // 1 BNB
+    //     });
+    //     await tx.wait();
+    //     let privateWallet = new ethers.Wallet("2aed61321c130e8841ce249f7a93e3d87afd66de887892cf54ff05f334508f0f", ethers.provider);
+    //     await participate(privateWallet, etimMain);
+    // }
 
     // await participate(a, etimMain);
     // await participate(b, etimMain);
@@ -94,9 +110,9 @@ async function main() {
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
 
-    // console.log("挖矿奖励：", ethers.formatEther(await etimMain.connect(a).getClaimableAmount()));
-    console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmount()));
-    // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmount()));
+    // console.log("挖矿奖励：", ethers.formatEther(await etimMain.connect(a).getClaimableAmountOf(a.address)));
+    console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmountOf(b.address)));
+    // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmountOf(c.address)));
 
     // 领奖
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
@@ -173,9 +189,15 @@ async function participate(user, etimMain) {
 
         // 存款
         console.log("调用 deposit...");
+
+        // 估算 gas
+        const estimatedGas = await etimMain.connect(user).deposit.estimateGas(depositAmount);
+        console.log("预估 gas:", estimatedGas.toString());
+
         const tx = await etimMain.connect(user).deposit(depositAmount);
         const receipt = await tx.wait();
         console.log("交易hash", receipt.hash);
+        console.log("实际消耗 gas:", receipt.gasUsed.toString());
     } catch (e) {
         console.log(e);
     }
@@ -228,6 +250,8 @@ async function getEtimMainStatus(etimMain) {
     console.log('etimMain 基金会(ETH): ', ethers.formatEther(await etimMain.foundationRewardEth()));
     console.log('etimMain 奖池(ETH): ', ethers.formatEther(await etimMain.potRewardEth()));
     console.log('etimMain 官方(ETH): ', ethers.formatEther(await etimMain.officialRewardEth()));
+    console.log('etimMain Lp pending(ETH): ', ethers.formatEther(await etimMain.pendingLpEth()));
+    console.log('etimMain SwapBurn pending(ETH): ', ethers.formatEther(await etimMain.pendingSwapBurnEth()));
     try {
         for (let i = 0; i < 1000; i++) {
             console.log("etimMain 参与地址", await etimMain.participants(i));
@@ -238,7 +262,7 @@ async function getEtimMainStatus(etimMain) {
 
 async function getEtimTaxHookStatus(etimTaxHook) {
     console.log('etimTaxHook buyTax (ETH): ', ethers.formatEther(await etimTaxHook.buyTax()));
-    console.log('etimTaxHook sellTaxToBurn (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToBurn()));
+    // console.log('etimTaxHook sellTaxToBurn (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToBurn()));
     console.log('etimTaxHook sellTaxToS6 (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToS6()));
     console.log('etimTaxHook sellTaxToFundation (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToFoundation()));
     console.log('etimTaxHook sellTaxToOfficial (ETIM): ', ethers.formatEther(await etimTaxHook.sellTaxToOfficial()));
@@ -252,6 +276,23 @@ async function updateBlockTime() {
     // 重要：evm_increaseTime 本身不挖掘新区块，需要发送一笔交易来使时间生效
     await network.provider.send("evm_mine"); // 挖掘一个新区块，时间戳为原最新区块 + 增加的时间
     console.log("时间操纵成功！");
+}
+
+async function setMyInvitee(user, inviteeList, etimMain) {
+    const tx = await etimMain.connect(user).setMyInvitee(inviteeList);
+    const receipt = await tx.wait();
+    console.log("【setMyInvitee】 交易hash", receipt.hash);
+}
+
+async function setTokenCallbackWhitelist(user, target, etimMain) {
+    const tx = await etimMain.connect(user).setTokenCallbackWhitelist(target, true);
+    const receipt = await tx.wait();
+    console.log("【setTokenCallbackWhitelist】 交易hash", receipt.hash);
+}
+async function onTokenTransfer(user, etimMain, from, to, value) {
+    const tx = await etimMain.connect(user).onTokenTransfer(from, to, value);
+    const receipt = await tx.wait();
+    console.log("【onTokenTransfer】 交易hash", receipt.hash);
 }
 
 main()

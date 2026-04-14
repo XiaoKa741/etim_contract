@@ -20,6 +20,7 @@ module.exports = {
       forking: {
         url: process.env.BSC_RPC_URL || "https://bsc.publicnode.com",
         enabled: process.env.FORK === "true",
+        blockNumber: 92060781
       },
       hardfork: "cancun",
       initialBaseFeePerGas: 0,
