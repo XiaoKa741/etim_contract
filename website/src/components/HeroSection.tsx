@@ -4,10 +4,21 @@ import Link from 'next/link';
 import { ConnectButton } from '@/components/ConnectButton';
 import { useAccount } from 'wagmi';
 import { useTranslation } from '@/lib/i18n';
+import { CONTRACTS } from '@/config/contracts';
+import { useState } from 'react';
 
 export function HeroSection() {
   const { isConnected } = useAccount();
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const copyMainContract = async () => {
+    try {
+      await navigator.clipboard.writeText(CONTRACTS.ETIMMain);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
 
   return (
     <section className="relative overflow-hidden py-24 sm:py-32">
@@ -17,6 +28,15 @@ export function HeroSection() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 sm:px-6 lg:px-8 text-center">
+        <button
+          onClick={copyMainContract}
+          className="mx-auto mb-4 w-full max-w-2xl bg-gray-900/60 border border-indigo-500/30 hover:border-indigo-400/60 rounded-xl px-4 py-3 transition-colors"
+        >
+          <div className="text-sm sm:text-base text-gray-300 mb-1">{t('hero.mainContract')}</div>
+          <div className="text-sm sm:text-base font-medium text-indigo-200 break-all">{CONTRACTS.ETIMMain}</div>
+          <div className="mt-1 text-xs sm:text-sm text-green-400">{copied ? t('hero.copied') : t('hero.tapToCopy')}</div>
+        </button>
+
         <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full px-4 py-1.5 mb-8">
           <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
           <span className="text-indigo-300 text-sm">{t('hero.badge')}</span>
