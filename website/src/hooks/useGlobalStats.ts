@@ -3,8 +3,11 @@
 import { useReadContract } from 'wagmi';
 import { CONTRACTS } from '@/config/contracts';
 import { ETIMMainABI, ETIMTaxHookABI, ETIMPoolHelperABI } from '@/config/abis';
+import { useEffect, useState } from 'react';
 
 export function useGlobalStats() {
+  const [tokenHolderCount, setTokenHolderCount] = useState<bigint | undefined>(undefined);
+
   const { data: totalUsers } = useReadContract({
     address: CONTRACTS.ETIMMain,
     abi: ETIMMainABI,
@@ -70,6 +73,35 @@ export function useGlobalStats() {
     abi: ETIMMainABI,
     functionName: 'ethPriceInUsd',
   });
+
+  // Fetch ETIM token holder count (BSC) from GoPlus public API
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchHolderCount() {
+      try {
+        const url = `https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses=${CONTRACTS.ETIMToken}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        const key = CONTRACTS.ETIMToken.toLowerCase();
+        const countStr = data?.result?.[key]?.holder_count;
+        if (!cancelled && countStr !== undefined && countStr !== null) {
+          const count = BigInt(countStr);
+          setTokenHolderCount(count);
+        }
+      } catch {
+        // ignore network errors and keep fallback value
+      }
+    }
+
+    fetchHolderCount();
+    const timer = setInterval(fetchHolderCount, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   // Daily deposit limit reads
   const { data: dailyDepositTotal } = useReadContract({
@@ -143,7 +175,7 @@ export function useGlobalStats() {
     : undefined;
 
   return {
-    totalUsers: totalUsers as bigint | undefined,
+    totalUsers: tokenHolderCount ?? (totalUsers as bigint | undefined),
     totalDeposited: totalDeposited as bigint | undefined,
     totalActiveNodes: totalActiveNodes as bigint | undefined,
     remainingPool: remainingPool as bigint | undefined,
