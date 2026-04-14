@@ -5,11 +5,11 @@ import { useGlobalStats } from '@/hooks/useGlobalStats';
 import { useTranslation } from '@/lib/i18n';
 
 export function StatsCard() {
-  const { totalUsers, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool, poolEthReserves, poolEtimReserves, etimPriceInUsd, dailyQuotaUsed, dailyQuotaLimit, dailyQuotaPercent } = useGlobalStats();
+  const { totalUsers, tokenHolderCountLoading, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool, poolEthReserves, poolEtimReserves, etimPriceInUsd, dailyQuotaUsed, dailyQuotaLimit, dailyQuotaPercent } = useGlobalStats();
   const { t } = useTranslation();
 
   const stats = [
-    { label: t('stats.totalUsers'), value: totalUsers !== undefined ? Number(totalUsers).toLocaleString() : '—' },
+    { label: t('stats.totalUsers'), value: tokenHolderCountLoading ? t('stats.loading') : (totalUsers !== undefined ? Number(totalUsers).toLocaleString() : '—') },
     { label: t('stats.totalDeposited'), value: totalDeposited !== undefined ? `${Number(formatEther(totalDeposited)).toFixed(2)} ETH` : '—' },
     { label: t('stats.activeNodes'), value: totalActiveNodes !== undefined ? Number(totalActiveNodes).toLocaleString() : '—' },
     { label: t('stats.remainingPool'), value: remainingPool !== undefined ? `${Number(formatEther(remainingPool)).toLocaleString(undefined, { maximumFractionDigits: 0 })} ETIM` : '—' },

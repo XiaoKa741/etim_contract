@@ -7,12 +7,7 @@ import { useEffect, useState } from 'react';
 
 export function useGlobalStats() {
   const [tokenHolderCount, setTokenHolderCount] = useState<bigint | undefined>(undefined);
-
-  const { data: totalUsers } = useReadContract({
-    address: CONTRACTS.ETIMMain,
-    abi: ETIMMainABI,
-    functionName: 'totalUsers',
-  });
+  const [tokenHolderCountLoading, setTokenHolderCountLoading] = useState(true);
 
   const { data: totalDeposited } = useReadContract({
     address: CONTRACTS.ETIMMain,
@@ -79,9 +74,11 @@ export function useGlobalStats() {
     let cancelled = false;
 
     async function fetchHolderCount() {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
       try {
         const url = `https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses=${CONTRACTS.ETIMToken}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
         const key = CONTRACTS.ETIMToken.toLowerCase();
@@ -89,9 +86,12 @@ export function useGlobalStats() {
         if (!cancelled && countStr !== undefined && countStr !== null) {
           const count = BigInt(countStr);
           setTokenHolderCount(count);
+          setTokenHolderCountLoading(false);
         }
       } catch {
         // ignore network errors and keep fallback value
+      } finally {
+        clearTimeout(timeout);
       }
     }
 
@@ -175,7 +175,8 @@ export function useGlobalStats() {
     : undefined;
 
   return {
-    totalUsers: tokenHolderCount ?? (totalUsers as bigint | undefined),
+    totalUsers: tokenHolderCount,
+    tokenHolderCountLoading,
     totalDeposited: totalDeposited as bigint | undefined,
     totalActiveNodes: totalActiveNodes as bigint | undefined,
     remainingPool: remainingPool as bigint | undefined,
