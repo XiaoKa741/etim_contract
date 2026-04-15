@@ -286,6 +286,15 @@ contract ETIMMainV2 is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         _processParticipation(msg.sender, ethAmount);
     }
 
+    /// @notice A deposits WETH on behalf of B (miner). B must have referral binding.
+    /// @param miner The address that will participate and receive mining rewards.
+    /// @param ethAmount The amount of WETH to deposit.
+    function depositFor(address miner, uint256 ethAmount) external nonReentrant {
+        if (miner == address(0) || miner == msg.sender) revert InvalidParams();
+        weth.safeTransferFrom(msg.sender, address(this), ethAmount);
+        _processParticipation(miner, ethAmount);
+    }
+
     // Participation logic
     function _processParticipation(address addr, uint256 ethAmount) private {
         if (users[addr].participationTime != 0) revert AlreadyParticipated();
@@ -671,8 +680,8 @@ contract ETIMMainV2 is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         ) {
             // If referral relationship already exists, clean up pending records
             if (referralsOf[from][to] > 0 || referralsOf[to][from] > 0) {
-                if (transferRecords[from][to] > 0) delete transferRecords[from][to];
-                if (transferRecords[to][from] > 0) delete transferRecords[to][from];
+                delete transferRecords[from][to];
+                delete transferRecords[to][from];
                 return;
             }
 
@@ -680,8 +689,8 @@ contract ETIMMainV2 is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
             bool fromQualified = referrerOf[from] != address(0) || users[from].directReferralCount > 0;
             bool toQualified   = referrerOf[to]   != address(0) || users[to].directReferralCount   > 0;
             if (fromQualified && toQualified) {
-                if (transferRecords[from][to] > 0) delete transferRecords[from][to];
-                if (transferRecords[to][from] > 0) delete transferRecords[to][from];
+                delete transferRecords[from][to];
+                delete transferRecords[to][from];
                 return;
             }
 
