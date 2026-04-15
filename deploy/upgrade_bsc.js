@@ -30,7 +30,7 @@ async function upgrade() {
 
     // 4. 验证存储布局兼容性
     console.log("\n📋 验证存储布局兼容性...");
-    const ETIMMainV2 = await ethers.getContractFactory("ETIMMainV2");
+    const ETIMMainV2 = await ethers.getContractFactory("contracts/ETIMMainV2.sol:ETIMMain");
     await upgrades.validateImplementation(ETIMMainV2, { kind: "uups" });
     console.log("✅ 存储布局验证通过");
 

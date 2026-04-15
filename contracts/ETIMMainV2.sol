@@ -34,7 +34,7 @@ interface IETIMPoolHelper {
     function swapAndBurn(uint256 ethAmount) external;
 }
 
-contract ETIMMainV2 is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ReentrancyGuardUpgradeable {
+contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     // ERRORS

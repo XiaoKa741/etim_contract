@@ -63,7 +63,7 @@ async function main() {
     // await setTokenCallbackWhitelist(a, b, etimMain);
     // await onTokenTransfer(b, etimMain, '0x7219D01758077CD4300F70e4593D78397593D1Ff', '0xED49776Ad4A6ed99292b837CA078F613ece2fD3E', ethers.parseEther("1"))
     // await onTokenTransfer(b, etimMain, f.address, a.address, ethers.parseEther("1"))
-    // await setMyInvitee(a, ['0xB30367c033d2a18c4Bf70D377E76C7CFd938B571'], etimMain)
+    // await setMyInvitee(a, [c.address], etimMain);
     // {
     //     await a.sendTransaction({
     //         to: "0x7219D01758077CD4300F70e4593D78397593D1Ff",
@@ -80,16 +80,18 @@ async function main() {
     // await participate(d, etimMain);
     // await participate(e, etimMain);
     // await participate(f, etimMain);
+    // await participateFor(a, b, etimMain);
 
     // console.log("下级", a.address, "上级", await etimMain.referrerOf(a.address));
     // console.log("下级", b.address, "上级", await etimMain.referrerOf(b.address));
+    // console.log("下级", c.address, "上级", await etimMain.referrerOf(c.address));
     // try { console.log("上级", a.address, "下级", await etimMain.referralsOfList(a.address, 0)); } catch (e) { }
     // try { console.log("上级", b.address, "下级", await etimMain.referralsOfList(b.address, 0)); } catch (e) { }
     // console.log("main合约etim代币", ethers.formatEther(await etimToken.balanceOf(ETIMMainAddress)));
     // console.log("0地址etim代币", ethers.formatEther(await etimToken.balanceOf("0x000000000000000000000000000000000000dEaD")));
 
     await getEtimMainStatus(etimMain);
-    await getUserInfo(etimMain, a);
+    // await getUserInfo(etimMain, a);
     // await getUserInfo(etimMain, b);
     // await getUserInfo(etimMain, c);
     // await getUserInfo(etimMain, d);
@@ -109,10 +111,11 @@ async function main() {
     // console.log((await tx.wait()).hash);
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
 
-
     // console.log("挖矿奖励：", ethers.formatEther(await etimMain.connect(a).getClaimableAmountOf(a.address)));
-    console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmountOf(b.address)));
+    // console.log(ethers.formatEther(await etimMain.connect(b).getClaimableAmountOf(b.address)));
     // console.log(ethers.formatEther(await etimMain.connect(c).getClaimableAmountOf(c.address)));
+    // console.log(ethers.formatEther(await etimMain.connect(d).getClaimableAmountOf(d.address)));
+    // console.log(ethers.formatEther(await etimMain.connect(e).getClaimableAmountOf(e.address)));
 
     // 领奖
     // console.log("etim代币数量", ethers.formatEther(await etimToken.balanceOf(a.address)));
@@ -195,6 +198,68 @@ async function participate(user, etimMain) {
         console.log("预估 gas:", estimatedGas.toString());
 
         const tx = await etimMain.connect(user).deposit(depositAmount);
+        const receipt = await tx.wait();
+        console.log("交易hash", receipt.hash);
+        console.log("实际消耗 gas:", receipt.gasUsed.toString());
+    } catch (e) {
+        console.log(e);
+    }
+}
+
+async function participateFor(user, miner, etimMain) {
+    try {
+        console.log(`[ETIMMain] participateFor ${user.address}, ${miner.address}`);
+
+        const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
+        const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
+        const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+        const ETIMMainAddress = await etimMain.getAddress();
+
+        // 检查账户余额
+        const bnbBalance = await ethers.provider.getBalance(user.address);
+        const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
+        const wethBalance = await weth.balanceOf(user.address);
+        console.log("BNB 余额:", ethers.formatEther(bnbBalance));
+        console.log("WETH 余额:", ethers.formatEther(wethBalance));
+
+        await getUserInfo(etimMain, miner);
+
+        const depositAmount = ethers.parseEther("0.0637");
+
+        // 如果 WETH 不够，先用 BNB 买 WETH
+        if (wethBalance < depositAmount) {
+            console.log("WETH 不够，用 BNB 购买...");
+            const ROUTER_ABI = [
+                "function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline) external payable returns (uint[] memory amounts)"
+            ];
+            const router = new ethers.Contract(PANCAKE_ROUTER_V2, ROUTER_ABI, user);
+            const path = [WBNB_ADDRESS, WETH_ADDRESS];
+            const block = await ethers.provider.getBlock("latest");
+            const deadline = block.timestamp + 60 * 20;  // 区块时间 + 20分钟（fork 环境必须用区块时间）
+            const swapTx = await router.swapExactETHForTokens(
+                0,
+                path,
+                user.address,
+                deadline,
+                { value: ethers.parseEther("500") }  // 换等量 WETH
+            );
+            await swapTx.wait();
+            console.log("购买 WETH 完成");
+        }
+
+        // 授权 WETH 给 main 合约
+        console.log("授权 WETH 给 main 合约...");
+        const approveTx = await weth.connect(user).approve(ETIMMainAddress, ethers.MaxInt256);
+        await approveTx.wait();
+
+        // 存款
+        console.log("调用 depositFor...");
+
+        // 估算 gas
+        const estimatedGas = await etimMain.connect(user).depositFor.estimateGas(miner.address, depositAmount);
+        console.log("预估 gas:", estimatedGas.toString());
+
+        const tx = await etimMain.connect(user).depositFor(miner.address, depositAmount);
         const receipt = await tx.wait();
         console.log("交易hash", receipt.hash);
         console.log("实际消耗 gas:", receipt.gasUsed.toString());
