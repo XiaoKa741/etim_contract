@@ -382,9 +382,8 @@ contract ETIMMainV2 is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         uint256 lpInject       = lpEth       * lpBurnAutoRatio / FEE_DENOMINATOR;
         uint256 swapBurnInject = swapBurnEth * lpBurnAutoRatio / FEE_DENOMINATOR;
 
-        // Base pending amounts (portion not injected immediately)
-        uint256 newPendingLp       = lpEth - lpInject;
-        uint256 newPendingSwapBurn = swapBurnEth - swapBurnInject;
+        pendingLpEth       += lpEth       - lpInject;
+        pendingSwapBurnEth += swapBurnEth - swapBurnInject;
 
         // Immediate distributions
         if (nodeEth > 0) {
@@ -400,24 +399,12 @@ contract ETIMMainV2 is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         if (potEth > 0)        potRewardEth        += potEth;
         if (officialEth > 0)   officialRewardEth   += officialEth;
 
-        // Try immediate LP injection; on failure, add to pending
         if (lpInject > 0) {
-            try etimPoolHelper.swapAndAddLiquidity(lpInject) {}
-            catch {
-                newPendingLp += lpInject;
-            }
+            etimPoolHelper.swapAndAddLiquidity(lpInject);
         }
-        // Try immediate burn injection; on failure, add to pending
         if (swapBurnInject > 0) {
-            try etimPoolHelper.swapAndBurn(swapBurnInject) {}
-            catch {
-                newPendingSwapBurn += swapBurnInject;
-            }
+            etimPoolHelper.swapAndBurn(swapBurnInject);
         }
-
-        // Single SSTORE per pending bucket
-        pendingLpEth       += newPendingLp;
-        pendingSwapBurnEth += newPendingSwapBurn;
     }
 
 
