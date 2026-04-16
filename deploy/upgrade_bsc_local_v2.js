@@ -1,7 +1,7 @@
 const { ethers, upgrades } = require("hardhat");
 
 // 代理合约地址
-const ETIMMAIN_PROXY_ADDRESS = "0x8f548f98c1C6deeD34287D550A6bb907d2906200";
+const ETIMMAIN_PROXY_ADDRESS = "0x7Bb0814236E80Dc6AaFcd4B02Faa60C950A96728";
 const ETIMHELPER_PROXY_ADDRESS = "0x3e15dEd17eA481cbcEa4A573EaFd5a779B42063C";
 
 async function main() {
@@ -25,18 +25,33 @@ async function upgrade() {
     const implAddress = await upgrades.erc1967.getImplementationAddress(ETIMMAIN_PROXY_ADDRESS);
     console.log("当前实现合约地址:", implAddress);
 
+    // 导入现有代理（首次在本机操作时需要）
+    const ETIMMainV1 = await ethers.getContractFactory("contracts/ETIMMain.sol:ETIMMain");
+    try {
+        await upgrades.forceImport(ETIMMAIN_PROXY_ADDRESS, ETIMMainV1, { kind: "uups" });
+        console.log("✅ 代理导入成功");
+    } catch (e) {
+        if (e.message.includes("already registered")) {
+            console.log("ℹ️  代理已注册，跳过导入");
+        } else {
+            throw e;
+        }
+    }
+
     // 验证存储布局兼容性
     console.log("\n📋 验证存储布局兼容性...");
     const ETIMMainV2 = await ethers.getContractFactory("contracts/ETIMMainV2.sol:ETIMMain");
-    await upgrades.validateImplementation(ETIMMainV2, { kind: "uups" });
+    await upgrades.validateUpgrade(ETIMMAIN_PROXY_ADDRESS, ETIMMainV2, { kind: "uups" });
     console.log("✅ 存储布局验证通过");
 
     // 部署新的实现合约并升级
     console.log("\n🆗 部署 ETIMMainV2 实现合约并升级代理...");
     const etimMainV2 = await upgrades.upgradeProxy(ETIMMAIN_PROXY_ADDRESS, ETIMMainV2, {
         kind: "uups",
+        redeployImplementation: "onchange",
     });
-    await etimMainV2.waitForDeployment();
+    const tx = etimMainV2.deploymentTransaction();
+    if (tx) await tx.wait(2);
 
     const newImplAddress = await upgrades.erc1967.getImplementationAddress(ETIMMAIN_PROXY_ADDRESS);
 
@@ -102,10 +117,27 @@ async function upgrade_helper() {
         CHAINLINK_ETH_USD,
     ];
 
+    // 导入现有代理（首次在本机操作时需要）
+    const ETIMPoolHelperV1 = await ethers.getContractFactory("ETIMPoolHelper");
+    try {
+        await upgrades.forceImport(ETIMHELPER_PROXY_ADDRESS, ETIMPoolHelperV1, {
+            kind: "uups",
+            constructorArgs,
+            unsafeAllow: ["constructor", "state-variable-immutable"],
+        });
+        console.log("✅ 代理导入成功");
+    } catch (e) {
+        if (e.message.includes("already registered")) {
+            console.log("ℹ️  代理已注册，跳过导入");
+        } else {
+            throw e;
+        }
+    }
+
     // 验证存储布局兼容性
     console.log("\n📋 验证存储布局兼容性...");
     const ETIMPoolHelper = await ethers.getContractFactory("ETIMPoolHelper");
-    await upgrades.validateImplementation(ETIMPoolHelper, {
+    await upgrades.validateUpgrade(ETIMHELPER_PROXY_ADDRESS, ETIMPoolHelper, {
         kind: "uups",
         constructorArgs,
         unsafeAllow: ["constructor", "state-variable-immutable"],
@@ -118,8 +150,10 @@ async function upgrade_helper() {
         kind: "uups",
         constructorArgs,
         unsafeAllow: ["constructor", "state-variable-immutable"],
+        redeployImplementation: "onchange",
     });
-    await poolHelper.waitForDeployment();
+    const tx = poolHelper.deploymentTransaction();
+    if (tx) await tx.wait(2);
 
     const newImplAddress = await upgrades.erc1967.getImplementationAddress(ETIMHELPER_PROXY_ADDRESS);
 

@@ -124,7 +124,7 @@ async function deploy() {
 
     // ========== 部署主合约 (UUPS Proxy) ==========
     console.log("\n🆗. 部署ETIM主合约 (UUPS Proxy)...");
-    const ETIMMain = await ethers.getContractFactory("ETIMMain");
+    const ETIMMain = await ethers.getContractFactory("contracts/ETIMMain.sol:ETIMMain");
     const etimMain = await upgrades.deployProxy(ETIMMain, [
         etimTokenAddress,
         WETH_ADDRESS,

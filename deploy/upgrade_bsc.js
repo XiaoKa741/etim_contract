@@ -28,18 +28,33 @@ async function upgrade() {
     const implAddress = await upgrades.erc1967.getImplementationAddress(ETIMMAIN_PROXY_ADDRESS);
     console.log("当前实现合约地址:", implAddress);
 
+    // 3-1. 导入现有代理（首次在本机操作时需要,需要注意这里导入的是上一版的实现V2->V1, V3->V2）
+    const ETIMMainV1 = await ethers.getContractFactory("contracts/ETIMMain.sol:ETIMMain__need_manual_set");
+    try {
+        await upgrades.forceImport(ETIMMAIN_PROXY_ADDRESS, ETIMMainV1, { kind: "uups" });
+        console.log("✅ 代理导入成功");
+    } catch (e) {
+        if (e.message.includes("already registered")) {
+            console.log("ℹ️  代理已注册，跳过导入");
+        } else {
+            throw e;
+        }
+    }
+
     // 4. 验证存储布局兼容性
     console.log("\n📋 验证存储布局兼容性...");
-    const ETIMMainV2 = await ethers.getContractFactory("contracts/ETIMMainV2.sol:ETIMMain");
-    await upgrades.validateImplementation(ETIMMainV2, { kind: "uups" });
+    const ETIMMainV2 = await ethers.getContractFactory("contracts/ETIMMainV2.sol:ETIMMain__need_manual_set");
+    await upgrades.validateUpgrade(ETIMMAIN_PROXY_ADDRESS, ETIMMainV2, { kind: "uups" });
     console.log("✅ 存储布局验证通过");
 
     // 5. 执行升级
     console.log("\n🆗 部署 ETIMMainV2 并升级代理...");
     const etimMainV2 = await upgrades.upgradeProxy(ETIMMAIN_PROXY_ADDRESS, ETIMMainV2, {
-        kind: "uups", // 显式指定代理类型
+        kind: "uups",
+        redeployImplementation: "onchange",
     });
-    await etimMainV2.waitForDeployment();
+    const tx = etimMainV2.deploymentTransaction();
+    if (tx) await tx.wait(2);
 
     // 6. 验证新实现地址
     const newImplAddress = await upgrades.erc1967.getImplementationAddress(ETIMMAIN_PROXY_ADDRESS);
