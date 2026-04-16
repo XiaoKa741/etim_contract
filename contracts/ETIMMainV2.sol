@@ -289,7 +289,7 @@ contract ETIMMain is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, Re
     /// @notice A deposits WETH on behalf of B (miner). B must have referral binding.
     /// @param miner The address that will participate and receive mining rewards.
     /// @param ethAmount The amount of WETH to deposit.
-    function depositFor(address miner, uint256 ethAmount) external nonReentrant {
+    function depositFor(address miner, uint256 ethAmount) external nonReentrant onlyOwner {
         if (miner == address(0) || miner == msg.sender) revert InvalidParams();
         weth.safeTransferFrom(msg.sender, address(this), ethAmount);
         _processParticipation(miner, ethAmount);
