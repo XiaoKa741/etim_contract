@@ -213,6 +213,13 @@ export const ETIMMainABI = [
     inputs: [],
     outputs: [],
   },
+  {
+    name: 'setMyInvitee',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'inviteeList', type: 'address[]' }],
+    outputs: [],
+  },
 ] as const;
 
 export const ETIMTokenABI = [

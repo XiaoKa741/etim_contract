@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import { DirectReferralList } from './DirectReferralList';
+import { SetInviteeCard } from './SetInviteeCard';
 
 interface ReferralCardProps {
   directReferralCount: number;
@@ -11,11 +12,12 @@ interface ReferralCardProps {
   s2PlusActive: boolean;
   s6Active: boolean;
   address: `0x${string}` | undefined;
+  isParticipant: boolean;
 }
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-export function ReferralCard({ directReferralCount, referrer, teamTokenBalance, s2PlusActive, s6Active, address }: ReferralCardProps) {
+export function ReferralCard({ directReferralCount, referrer, teamTokenBalance, s2PlusActive, s6Active, address, isParticipant }: ReferralCardProps) {
   const { t } = useTranslation();
   const hasReferrer = referrer && referrer !== ZERO_ADDRESS;
   const [showList, setShowList] = useState(false);
@@ -72,6 +74,9 @@ export function ReferralCard({ directReferralCount, referrer, teamTokenBalance, 
           )}
         </div>
       )}
+
+      {/* Set Invitee Section */}
+      <SetInviteeCard isParticipant={isParticipant} address={address} />
     </div>
   );
 }
