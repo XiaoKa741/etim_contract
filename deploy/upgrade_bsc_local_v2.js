@@ -1,7 +1,7 @@
 const { ethers, upgrades } = require("hardhat");
 
 // 代理合约地址
-const ETIMMAIN_PROXY_ADDRESS = "0x7Bb0814236E80Dc6AaFcd4B02Faa60C950A96728";
+const ETIMMAIN_PROXY_ADDRESS = "0x8f548f98c1C6deeD34287D550A6bb907d2906200";
 const ETIMHELPER_PROXY_ADDRESS = "0x3e15dEd17eA481cbcEa4A573EaFd5a779B42063C";
 
 async function main() {
@@ -26,7 +26,7 @@ async function upgrade() {
     console.log("当前实现合约地址:", implAddress);
 
     // 导入现有代理（首次在本机操作时需要）
-    const ETIMMainV1 = await ethers.getContractFactory("contracts/ETIMMain.sol:ETIMMain");
+    const ETIMMainV1 = await ethers.getContractFactory("contracts/ETIMMainV2.sol:ETIMMain");
     try {
         await upgrades.forceImport(ETIMMAIN_PROXY_ADDRESS, ETIMMainV1, { kind: "uups" });
         console.log("✅ 代理导入成功");
@@ -40,7 +40,7 @@ async function upgrade() {
 
     // 验证存储布局兼容性
     console.log("\n📋 验证存储布局兼容性...");
-    const ETIMMainV2 = await ethers.getContractFactory("contracts/ETIMMainV2.sol:ETIMMain");
+    const ETIMMainV2 = await ethers.getContractFactory("contracts/ETIMMainV3.sol:ETIMMain");
     await upgrades.validateUpgrade(ETIMMAIN_PROXY_ADDRESS, ETIMMainV2, { kind: "uups" });
     console.log("✅ 存储布局验证通过");
 

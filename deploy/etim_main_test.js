@@ -6,13 +6,18 @@ const ETIMMainAddress = '0x8f548f98c1C6deeD34287D550A6bb907d2906200';
 const ETIMTokenAddress = '0x9d6403f24A89BaBa56939BBcE4FA0233f1d5E418';
 const ETIMNodeAddress = '0x58794e9886D309879ad064755e6f4374c54072BC';
 const ETIMPoolAddress = '0x3e15dEd17eA481cbcEa4A573EaFd5a779B42063C';
-const ETIMHookAddress = '0x1A2f81810D74F03D246Ea22D3455273353798440';
+const ETIMHookAddress = '0x2E3a870a76B38D15DcE247731139aA46814d0440';
 const Permit2Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const PositionManagerAddress = '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e';
 const PoolManagerAddress = '0x000000000004444c5dc75cB358380D2e3dE08A90';
 
+// bsc
+const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
+const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
+const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+
 async function main() {
-    const etimMain = await ethers.getContractAt("ETIMMainV2", ETIMMainAddress);
+    const etimMain = await ethers.getContractAt("contracts/ETIMMainV3.sol:ETIMMain", ETIMMainAddress);
     const etimToken = await ethers.getContractAt("ETIMToken", ETIMTokenAddress);
     const etimNode = await ethers.getContractAt("ETIMNode", ETIMNodeAddress);
     const etimPool = await ethers.getContractAt("ETIMPoolHelper", ETIMPoolAddress);
@@ -51,9 +56,9 @@ async function main() {
     // console.log((await tx.wait()).hash);
 
     // 相互转账2
-    // tx = await etimToken.connect(b).transfer(c.address, ethers.parseEther("10"));
+    // tx = await etimToken.connect(b).transfer(c.address, ethers.parseEther("5"));
     // console.log((await tx.wait()).hash);
-    // tx = await etimToken.connect(b).transfer(d.address, ethers.parseEther("15"));
+    // tx = await etimToken.connect(b).transfer(d.address, ethers.parseEther("5"));
     // console.log((await tx.wait()).hash);
     // tx = await etimToken.connect(c).transfer(b.address, ethers.parseEther("1"));
     // console.log((await tx.wait()).hash);
@@ -137,6 +142,9 @@ async function main() {
     // console.log(await etimNode.connect(b).totalPerformancePool());
     // console.log(await etimToken.balanceOf(ETIMMainAddress));
 
+    // await etimMain.setWithdrawTargets(b.address, b.address, c.address)
+    // await withdrawInnerRewards(e, etimMain);
+
     {
         const provider = ethers.provider;
         const block = await provider.getBlock("latest");
@@ -147,10 +155,6 @@ async function main() {
 async function participate(user, etimMain) {
     try {
         console.log(`[ETIMMain] participate ${user.address}`);
-
-        const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
-        const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
-        const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
         const ETIMMainAddress = await etimMain.getAddress();
 
         // 检查账户余额
@@ -209,9 +213,6 @@ async function participate(user, etimMain) {
 async function participateFor(user, miner, etimMain) {
     try {
         console.log(`[ETIMMain] participateFor ${user.address}, ${miner.address}`);
-
-        const WETH_ADDRESS = "0x2170Ed0880ac9A755fd29B2688956BD959F933F8";
-        const WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
         const PANCAKE_ROUTER_V2 = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
         const ETIMMainAddress = await etimMain.getAddress();
 
@@ -354,11 +355,44 @@ async function setTokenCallbackWhitelist(user, target, etimMain) {
     const receipt = await tx.wait();
     console.log("【setTokenCallbackWhitelist】 交易hash", receipt.hash);
 }
+
 async function onTokenTransfer(user, etimMain, from, to, value) {
     const tx = await etimMain.connect(user).onTokenTransfer(from, to, value);
     const receipt = await tx.wait();
     console.log("【onTokenTransfer】 交易hash", receipt.hash);
 }
+
+async function withdrawInnerRewards(user, etimMain) {
+    console.log("Foundation address:", await etimMain.foundationWithdrawAddr());
+    console.log("Pot address:", await etimMain.potWithdrawAddr());
+    console.log("Official address:", await etimMain.officialWithdrawAddr());
+
+    const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
+    try {
+        console.log("\nWETH 余额:", ethers.formatEther(await weth.balanceOf(etimMain.foundationWithdrawAddr())));
+        let tx = await etimMain.connect(user).withdrawFoundation();
+        let receipt = await tx.wait();
+        console.log("【withdrawFoundation】 交易hash", receipt.hash);
+        console.log("WETH 余额:", ethers.formatEther(await weth.balanceOf(etimMain.foundationWithdrawAddr())));
+    } catch (e) { console.log(e) }
+
+    try {
+        console.log("\nWETH 余额:", ethers.formatEther(await weth.balanceOf(etimMain.potWithdrawAddr())));
+        tx = await etimMain.connect(user).withdrawPot();
+        receipt = await tx.wait();
+        console.log("【withdrawPot】 交易hash", receipt.hash);
+        console.log("WETH 余额:", ethers.formatEther(await weth.balanceOf(etimMain.potWithdrawAddr())));
+    } catch (e) { console.log(e) }
+
+    try {
+        console.log("\nWETH 余额:", ethers.formatEther(await weth.balanceOf(etimMain.officialWithdrawAddr())));
+        tx = await etimMain.connect(user).withdrawOfficial();
+        receipt = await tx.wait();
+        console.log("【withdrawOfficial】 交易hash", receipt.hash);
+        console.log("\nWETH 余额:", ethers.formatEther(await weth.balanceOf(etimMain.officialWithdrawAddr())));
+    } catch (e) { console.log(e) }
+}
+
 
 main()
     .then(() => process.exit(0))

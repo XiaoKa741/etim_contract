@@ -124,7 +124,7 @@ async function deploy() {
 
     // ========== 部署主合约 (UUPS Proxy) ==========
     console.log("\n🆗. 部署ETIM主合约 (UUPS Proxy)...");
-    const ETIMMain = await ethers.getContractFactory("contracts/ETIMMain.sol:ETIMMain");
+    const ETIMMain = await ethers.getContractFactory("contracts/ETIMMainV2.sol:ETIMMain");
     const etimMain = await upgrades.deployProxy(ETIMMain, [
         etimTokenAddress,
         WETH_ADDRESS,
@@ -293,7 +293,7 @@ async function updateDailyPrice() {
     const [deployer] = await ethers.getSigners();
 
     const ETIMMainAddress = "0x8f548f98c1C6deeD34287D550A6bb907d2906200"; // 替换为实际地址
-    const etimMain = await ethers.getContractAt("ETIMMain", ETIMMainAddress);
+    const etimMain = await ethers.getContractAt("contracts/ETIMMainV2.sol:ETIMMain", ETIMMainAddress);
 
     let tx = await etimMain.connect(deployer).updateDailyPrice();
     await tx.wait();
