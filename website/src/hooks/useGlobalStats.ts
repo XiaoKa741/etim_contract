@@ -2,7 +2,7 @@
 
 import { useReadContract } from 'wagmi';
 import { CONTRACTS } from '@/config/contracts';
-import { ETIMMainABI, ETIMTaxHookABI, ETIMPoolHelperABI } from '@/config/abis';
+import { ETIMMainABI, ETIMTaxHookABI, ETIMPoolHelperABI, ERC20ABI } from '@/config/abis';
 import { useEffect, useState } from 'react';
 
 export function useGlobalStats() {
@@ -134,6 +134,27 @@ export function useGlobalStats() {
     functionName: 'dailyDepositRate',
   });
 
+  // Pot withdraw address for activity pool
+  const { data: potWithdrawAddr } = useReadContract({
+    address: CONTRACTS.ETIMMain,
+    abi: ETIMMainABI,
+    functionName: 'potWithdrawAddr',
+  });
+
+  // Check if potWithdrawAddr is valid (not zero address)
+  const isPotWithdrawAddrValid = potWithdrawAddr !== undefined && potWithdrawAddr !== '0x0000000000000000000000000000000000000000';
+
+  // Read WETH balance of potWithdrawAddr
+  const { data: potWethBalance } = useReadContract({
+    address: CONTRACTS.WETH,
+    abi: ERC20ABI,
+    functionName: 'balanceOf',
+    args: isPotWithdrawAddrValid ? [potWithdrawAddr as `0x${string}`] : undefined,
+    query: {
+      enabled: isPotWithdrawAddrValid,
+    },
+  });
+
   // Calculate ETIM reserves: ethReserves * etimPerEth / 1e18
   const poolEtimReserves = poolEthReserves !== undefined && etimPerEth !== undefined
     ? (poolEthReserves as bigint) * (etimPerEth as bigint) / (10n ** 18n)
@@ -190,5 +211,7 @@ export function useGlobalStats() {
     dailyQuotaUsed,
     dailyQuotaLimit,
     dailyQuotaPercent,
+    potWethBalance: potWethBalance as bigint | undefined,
+    isPotWithdrawAddrValid,
   };
 }

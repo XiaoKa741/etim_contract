@@ -16,6 +16,8 @@ export const ETIMMainABI = [
   { name: 'dailyDepositLimit', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'dailyDepositCap', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'dailyDepositRate', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  // Pot withdraw address
+  { name: 'potWithdrawAddr', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address' }] },
   // Read functions
   {
     name: 'users',

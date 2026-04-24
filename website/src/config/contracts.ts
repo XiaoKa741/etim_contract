@@ -5,6 +5,7 @@ export const CONTRACTS = {
   ETIMTaxHook: '0x5B9b935d9B27CBBa3Bfe50f2a7DD7aAEA8B90440' as const,
   ETIMPoolHelper: '0xF0A7764c5C58e71cE1DEB21DdF55Df3BfeF534Fe' as const,
   ETIMMain: '0xEA2530ADFb90b41c4b19EC6D121c42D3Df5696aa' as const,
+  WETH: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8' as const, // BSC bridged ETH
 } as const;
 
 // PancakeSwap V4 Infinity contracts on BSC

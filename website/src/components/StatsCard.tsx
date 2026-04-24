@@ -5,7 +5,7 @@ import { useGlobalStats } from '@/hooks/useGlobalStats';
 import { useTranslation } from '@/lib/i18n';
 
 export function StatsCard() {
-  const { totalUsers, tokenHolderCountLoading, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool, poolEthReserves, poolEtimReserves, etimPriceInUsd, dailyQuotaUsed, dailyQuotaLimit, dailyQuotaPercent } = useGlobalStats();
+  const { totalUsers, tokenHolderCountLoading, totalDeposited, totalActiveNodes, remainingPool, isPoolDepleted, s2PlusCount, s6Count, s6RewardPool, poolEthReserves, poolEtimReserves, etimPriceInUsd, dailyQuotaUsed, dailyQuotaLimit, dailyQuotaPercent, potWethBalance, isPotWithdrawAddrValid } = useGlobalStats();
   const { t } = useTranslation();
 
   const stats = [
@@ -22,6 +22,10 @@ export function StatsCard() {
     { label: t('stats.dailyQuota'), value: dailyQuotaLimit !== undefined && dailyQuotaLimit > 0n
       ? `${Number(formatEther(dailyQuotaUsed ?? 0n)).toFixed(2)} / ${Number(formatEther(dailyQuotaLimit)).toFixed(2)} ETH (${(dailyQuotaPercent ?? 0).toFixed(1)}%)`
       : '—' },
+    // Only show activity pool if potWithdrawAddr is valid (not zero address)
+    ...(isPotWithdrawAddrValid
+      ? [{ label: t('stats.activityPool'), value: potWethBalance !== undefined ? `${Number(formatEther(potWethBalance)).toLocaleString(undefined, { maximumFractionDigits: 4 })} ETH` : '—' }]
+      : []),
   ];
 
   // Calculate reset time in user's local timezone (UTC 0:00)
