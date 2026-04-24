@@ -53,8 +53,7 @@ async function upgrade() {
         kind: "uups",
         redeployImplementation: "onchange",
     });
-    const tx = etimMainV2.deploymentTransaction();
-    if (tx) await tx.wait(2);
+    await etimMainV2.waitForDeployment();
 
     // 6. 验证新实现地址
     const newImplAddress = await upgrades.erc1967.getImplementationAddress(ETIMMAIN_PROXY_ADDRESS);

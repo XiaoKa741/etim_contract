@@ -50,8 +50,7 @@ async function upgrade() {
         kind: "uups",
         redeployImplementation: "onchange",
     });
-    const tx = etimMainV2.deploymentTransaction();
-    if (tx) await tx.wait(2);
+    await etimMainV2.waitForDeployment();
 
     const newImplAddress = await upgrades.erc1967.getImplementationAddress(ETIMMAIN_PROXY_ADDRESS);
 
@@ -152,8 +151,7 @@ async function upgrade_helper() {
         unsafeAllow: ["constructor", "state-variable-immutable"],
         redeployImplementation: "onchange",
     });
-    const tx = poolHelper.deploymentTransaction();
-    if (tx) await tx.wait(2);
+    await poolHelper.waitForDeployment();
 
     const newImplAddress = await upgrades.erc1967.getImplementationAddress(ETIMHELPER_PROXY_ADDRESS);
 
