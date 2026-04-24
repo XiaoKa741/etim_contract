@@ -85,6 +85,19 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
     }
   })();
 
+  const toInputAmount = (wei: bigint): string => {
+    const s = formatEther(wei);
+    if (!s.includes('.')) return s;
+    const trimmed = s.replace(/0+$/, '');
+    return trimmed.endsWith('.') ? trimmed.slice(0, -1) : trimmed;
+  };
+
+  const dailyQuotaRemaining = (() => {
+    if (dailyQuotaLimit === undefined) return undefined;
+    const used = dailyQuotaUsed ?? 0n;
+    return dailyQuotaLimit > used ? dailyQuotaLimit - used : 0n;
+  })();
+
   const isAmountValid = amountWei !== undefined && minEth !== undefined && maxEth !== undefined
     && amountWei >= minEth && amountWei <= maxEth;
 
@@ -126,7 +139,14 @@ export function DepositCard({ minEth, maxEth, minEthFormatted, maxEthFormatted, 
   };
 
   const setMaxAmount = () => {
-    if (maxEthFormatted) setAmount(maxEthFormatted);
+    const candidates: bigint[] = [];
+    if (maxEth !== undefined) candidates.push(maxEth);
+    if (wethBalance !== undefined) candidates.push(wethBalance);
+    if (dailyQuotaRemaining !== undefined) candidates.push(dailyQuotaRemaining);
+    if (candidates.length === 0) return;
+
+    const maxAllowed = candidates.reduce((acc, cur) => (cur < acc ? cur : acc));
+    setAmount(toInputAmount(maxAllowed));
   };
 
   const error = approveError || depositError;

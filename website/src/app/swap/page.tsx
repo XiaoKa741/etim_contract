@@ -442,8 +442,8 @@ export default function SwapPage() {
                   </>
                 ) : (
                   <>
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">E</span>
+                    <div className="w-7 h-7 rounded-full overflow-hidden border border-amber-400/40">
+                      <img src="/icon.png" alt="ETIM" className="w-full h-full object-cover" />
                     </div>
                     <span className="text-white font-medium">ETIM</span>
                   </>
@@ -493,8 +493,8 @@ export default function SwapPage() {
                   </>
                 ) : (
                   <>
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">E</span>
+                    <div className="w-7 h-7 rounded-full overflow-hidden border border-amber-400/40">
+                      <img src="/icon.png" alt="ETIM" className="w-full h-full object-cover" />
                     </div>
                     <span className="text-white font-medium">ETIM</span>
                   </>

@@ -12,7 +12,11 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white text-sm">E</div>
+              <img
+                src="/icon.png"
+                alt="ETIM"
+                className="w-8 h-8 rounded-lg object-cover"
+              />
               <span className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">ETIM</span>
             </div>
             <p className="text-gray-400 text-sm">{t('footer.description')}</p>
