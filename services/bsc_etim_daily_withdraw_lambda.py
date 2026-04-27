@@ -97,17 +97,6 @@ def notify_lark(title: str, content_lines: List[List[dict]]):
         logger.warning(f"⚠️ 飞书通知异常: {e}")
 
 
-def notify_success(results: List[dict], wallet_address: str):
-    """发送成功通知"""
-    content_lines = [[{"tag": "text", "text": f"钱包: {wallet_address}"}]]
-
-    for r in results:
-        if r["success"]:
-            content_lines.append([{"tag": "text", "text": f"✅ {r['name']}: {r['amount']} ETH"}])
-
-    notify_lark("**✅ ETIM 每日提现成功 (BSC)**", content_lines)
-
-
 def notify_failure(error: str, wallet_address: str, chain_id: int = None):
     """发送失败通知"""
     content_lines = [
@@ -273,7 +262,6 @@ def lambda_handler(event, context):
 
         if executed:
             result["body"]["message"] = f"成功执行 {len(executed)} 个提现"
-            notify_success(withdraw_results, account.address)
         else:
             result["body"]["message"] = "无需提现（所有金额为0或地址无效）"
 
