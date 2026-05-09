@@ -314,7 +314,8 @@ export const ERC20ABI = [
   },
 ] as const;
 
-// Uniswap V4 Quoter ABI for getting swap quotes
+// PancakeSwap V4 (Infinity) Quoter ABI
+// PoolKey differs from Uniswap V4: has `poolManager` + `parameters` (bytes32) instead of `tickSpacing`
 export const QuoterABI = [
   {
     name: 'quoteExactInputSingle',
@@ -331,9 +332,10 @@ export const QuoterABI = [
             components: [
               { name: 'currency0', type: 'address' },
               { name: 'currency1', type: 'address' },
-              { name: 'fee', type: 'uint24' },
-              { name: 'tickSpacing', type: 'int24' },
               { name: 'hooks', type: 'address' },
+              { name: 'poolManager', type: 'address' },
+              { name: 'fee', type: 'uint24' },
+              { name: 'parameters', type: 'bytes32' },
             ],
           },
           { name: 'zeroForOne', type: 'bool' },
@@ -349,8 +351,18 @@ export const QuoterABI = [
   },
 ] as const;
 
-// Uniswap V4 Universal Router ABI
+// PancakeSwap V4 Infinity Router ABI
 export const UniversalRouterABI = [
+  {
+    name: 'execute',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'commands', type: 'bytes' },
+      { name: 'inputs', type: 'bytes[]' },
+    ],
+    outputs: [],
+  },
   {
     name: 'execute',
     type: 'function',
@@ -364,17 +376,11 @@ export const UniversalRouterABI = [
   },
 ] as const;
 
-// UniversalRouter V4 Parameters encoding
-// V4_SWAP = 0x10 (command byte)
-// Input: abi.encode(V4SwapStruct)
-// V4SwapStruct = {
-//   address recipient,
-//   PoolKey poolKey,  // (currency0, currency1, fee, tickSpacing, hooks)
-//   SwapParams params, // (zeroForOne, amountSpecified, sqrtPriceLimitX96)
-//   bool takeClaims,
-//   bool settleUsingBurn,
-//   bytes hookData
-// }
+// PancakeSwap V4 Infinity Universal Router:
+// execute(commands, inputs, deadline)
+// commands = encodePacked(uint8[] actions) - each byte is an action code
+// inputs[i] = abi.encode(bytes actions, bytes[] params) for Infinity commands
+// Action codes: INFI_SWAP=0x10, CL_SWAP_EXACT_IN_SINGLE=0x06, SETTLE_ALL=0x0c, TAKE_ALL=0x0f
 
 // Permit2 ABI for token approvals
 export const Permit2ABI = [

@@ -10,31 +10,48 @@ import {
 } from 'wagmi';
 import { formatEther, parseEther, Address, encodeAbiParameters, encodePacked } from 'viem';
 import { ConnectButton } from '@/components/ConnectButton';
-import { CONTRACTS, UNIVERSAL_ROUTER, PERMIT2_ADDRESS, CL_QUOTER as QUOTER } from '@/config/contracts';
+import { CONTRACTS, UNIVERSAL_ROUTER, PERMIT2_ADDRESS, CL_QUOTER as QUOTER, CL_POOL_MANAGER } from '@/config/contracts';
 import { ERC20ABI, UniversalRouterABI, QuoterABI, Permit2ABI } from '@/config/abis';
+
+// PancakeSwap V4 on BSC uses WETH (bridged ETH), not native ETH.
+// The Hook contract checks `wethAddress` to determine buy/sell direction.
+// Native ETH would be interpreted incorrectly and can revert with BuyNotEnabled.
 
 const ETIMTokenAddress = CONTRACTS.ETIMToken as Address;
 const ETIMTaxHookAddress = CONTRACTS.ETIMTaxHook as Address;
+// BSC bridged ETH (WETH) must match the Hook contract configuration.
+const WETHAddress = CONTRACTS.WETH as Address;
 
-// PoolKey
+// PoolKey uses the PancakeSwap V4 Infinity format.
+// Differs from Uniswap V4: includes `poolManager` and uses `parameters` (bytes32) instead of `tickSpacing`
+// parameters encodes: (tickSpacing << 16) | hookBitmap
+// hookBitmap 0x0440 = beforeSwap + beforeSwapReturnDelta (matches Hook's getHooksRegistrationBitmap)
+// tickSpacing 60 = 0x3C, so parameters = (60 << 16) | 0x0440 = 0x003C0440
+const POOL_PARAMETERS = `0x${((60 << 16) | 0x0440).toString(16).padStart(64, '0')}` as `0x${string}`;
+
 const POOL_KEY = {
-  currency0: '0x0000000000000000000000000000000000000000' as Address,
-  currency1: ETIMTokenAddress,
-  fee: 3000,
-  tickSpacing: 60,
-  hooks: ETIMTaxHookAddress,
+  currency0:   WETHAddress,          // WETH (numerically smaller address)
+  currency1:   ETIMTokenAddress,     // ETIM
+  hooks:       ETIMTaxHookAddress,
+  poolManager: CL_POOL_MANAGER as Address,
+  fee:         3000,
+  parameters:  POOL_PARAMETERS,
 };
 
-// V4 Actions
-const V4_ACTION_SWAP_EXACT_IN_SINGLE = 0x06;
-const V4_ACTION_SETTLE_ALL = 0x0c;
-const V4_ACTION_TAKE_ALL = 0x0f;
+// In this pool:
+//   zeroForOne = true  -> spend WETH, receive ETIM (BUY, blocked until Growth Pool depleted)
+//   zeroForOne = false -> spend ETIM, receive WETH (SELL, always allowed)
 
-// Constants
-const CMD_V4_SWAP = '0x10';
-const ETH_GAS_BUFFER = parseEther('0.005');
+// PancakeSwap V4 Infinity Action codes (from Actions.sol)
+// https://github.com/pancakeswap/pancake-v4-periphery/blob/main/src/libraries/Actions.sol
+const INFI_SWAP = 0x10;
+const CL_SWAP_EXACT_IN_SINGLE = 0x06;
+const SETTLE_ALL = 0x0c;
+const TAKE_ALL = 0x0f;
+
 const MAX_UINT160 = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF');
 const MAX_UINT48 = BigInt('0xFFFFFFFFFFFF');
+const MAX_UINT256 = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF');
 
 type TokenType = 'ETH' | 'ETIM';
 
@@ -43,7 +60,9 @@ function parseSwapError(err: unknown): string {
   const msg = err.message.toLowerCase();
   if (msg.includes('user rejected') || msg.includes('user denied')) return 'Transaction rejected.';
   if (msg.includes('insufficient')) return 'Insufficient balance.';
-  return err.message.length > 80 ? err.message.slice(0, 80) + '…' : err.message;
+  // Show full error in console, truncated in UI
+  console.error('[Full error]:', err.message);
+  return err.message.length > 200 ? err.message.slice(0, 200) + '...' : err.message;
 }
 
 // Format number with max decimals
@@ -103,15 +122,18 @@ export default function SwapPage() {
   // Balances
   const { data: etimBalanceData } = useBalance({ address, token: ETIMTokenAddress });
   const { data: ethBalanceData } = useBalance({ address });
+  const { data: wethBalanceData } = useBalance({ address, token: WETHAddress });
   const etimBalance = etimBalanceData?.value ?? BigInt(0);
-  const ethBalance = ethBalanceData?.value ?? BigInt(0);
+  const ethBalance = ethBalanceData?.value ?? BigInt(0);   // native ETH, for gas display only
+  const wethBalance = wethBalanceData?.value ?? BigInt(0); // WETH is what we actually swap
 
   const toToken: TokenType = fromToken === 'ETH' ? 'ETIM' : 'ETH';
-  const fromBalance = fromToken === 'ETH' ? ethBalance : etimBalance;
-  const toBalance = toToken === 'ETH' ? ethBalance : etimBalance;
+  // For swap amounts, fromToken=ETH means spending WETH (not native ETH)
+  const fromBalance = fromToken === 'ETH' ? wethBalance : etimBalance;
+  const toBalance = toToken === 'ETH' ? wethBalance : etimBalance;
 
   // Note: We don't fetch pool price on mount because:
-  // - ETH → ETIM (zeroForOne=true) is blocked by Hook contract
+  // - ETH -> ETIM (zeroForOne=true) is blocked by Hook contract
   // - Quoter simulation would revert for blocked directions
 
   // Quote output amount using Quoter (with debounce to reduce RPC calls)
@@ -224,61 +246,52 @@ export default function SwapPage() {
     }
 
     try {
-      const recipient = address as Address;
       const zeroForOne = fromToken === 'ETH';
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800); // 30 min
 
-      // Approve for ETIM → ETH: approve Permit2, then Permit2 approves Universal Router
-      if (fromToken === 'ETIM') {
-        setIsApproving(true);
-        try {
-          // Step 1: Approve ETIM to Permit2 (max approval, only needed once)
-          const currentAllowance = await publicClient!.readContract({
-            address: ETIMTokenAddress,
+      // Approve for both directions: approve Permit2, then Permit2 approves Universal Router
+      // ETH side = WETH (bridged ETH token on BSC), must go through Permit2 just like ETIM
+      const tokenToApprove = fromToken === 'ETIM' ? ETIMTokenAddress : WETHAddress;
+      setIsApproving(true);
+      try {
+        // Step 1: Approve token to Permit2 (max approval, only needed once)
+        const currentAllowance = await publicClient!.readContract({
+          address: tokenToApprove,
+          abi: ERC20ABI,
+          functionName: 'allowance',
+          args: [address, PERMIT2_ADDRESS as Address],
+        }) as bigint;
+
+        if (currentAllowance < ethAmount) {
+          console.log(`[Approve ${fromToken} -> Permit2]`);
+          const approveTxHash = await writeApprove({
+            address: tokenToApprove,
             abi: ERC20ABI,
-            functionName: 'allowance',
-            args: [address, PERMIT2_ADDRESS as Address],
-          }) as bigint;
-
-          if (currentAllowance < ethAmount) {
-            console.log('[Approve ETIM → Permit2]');
-            const approveTxHash = await writeApprove({
-              address: ETIMTokenAddress,
-              abi: ERC20ABI,
-              functionName: 'approve',
-              args: [PERMIT2_ADDRESS as Address, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
-            });
-            await publicClient!.waitForTransactionReceipt({ hash: approveTxHash });
-            console.log('[Approve ETIM → Permit2 confirmed]');
-          }
-
-          // Step 2: Permit2 approve Universal Router
-          console.log('[Permit2 approve → Universal Router]');
-          const permit2ApproveTxHash = await writeApprove({
-            address: PERMIT2_ADDRESS as Address,
-            abi: Permit2ABI,
             functionName: 'approve',
-            args: [ETIMTokenAddress, UNIVERSAL_ROUTER as Address, MAX_UINT160, Number(MAX_UINT48)],
+            args: [PERMIT2_ADDRESS as Address, BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')],
           });
-          await publicClient!.waitForTransactionReceipt({ hash: permit2ApproveTxHash });
-          console.log('[Permit2 approve confirmed]');
-        } finally {
-          setIsApproving(false);
+          await publicClient!.waitForTransactionReceipt({ hash: approveTxHash });
+          console.log(`[Approve ${fromToken} ->Permit2 confirmed]`);
         }
+
+        // Step 2: Permit2 approve Universal Router
+        console.log('[Permit2 approve -> Universal Router]');
+        const permit2ApproveTxHash = await writeApprove({
+          address: PERMIT2_ADDRESS as Address,
+          abi: Permit2ABI,
+          functionName: 'approve',
+          args: [tokenToApprove, UNIVERSAL_ROUTER as Address, MAX_UINT160, Number(MAX_UINT48)],
+        });
+        await publicClient!.waitForTransactionReceipt({ hash: permit2ApproveTxHash });
+        console.log('[Permit2 approve confirmed]');
+      } finally {
+        setIsApproving(false);
       }
 
-      // Price limits based on swap direction
-      const MIN_PRICE_LIMIT = BigInt('4295128740');
-      const MAX_PRICE_LIMIT = BigInt('1461446703485210103287273052203988822378723970341');
-      const sqrtPriceLimitX96 = zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT;
+      // PancakeSwap V4 Actions: CL_SWAP_EXACT_IN_SINGLE + SETTLE_ALL + TAKE_ALL
+      // Data format: abi.encode(bytes actions, bytes[] params)
+      // Each action is a uint8, params[i] is the encoded parameters for actions[i]
 
-      // V4 Actions: SWAP_EXACT_IN_SINGLE + SETTLE_ALL + TAKE_ALL
-      const actions = encodePacked(
-        ['uint8', 'uint8', 'uint8'],
-        [V4_ACTION_SWAP_EXACT_IN_SINGLE, V4_ACTION_SETTLE_ALL, V4_ACTION_TAKE_ALL]
-      );
-
-      // SWAP_EXACT_IN_SINGLE params
+      // 1. Encode swap params
       const swapParams = encodeAbiParameters(
         [{
           type: 'tuple',
@@ -289,9 +302,10 @@ export default function SwapPage() {
               components: [
                 { name: 'currency0', type: 'address' },
                 { name: 'currency1', type: 'address' },
-                { name: 'fee', type: 'uint24' },
-                { name: 'tickSpacing', type: 'int24' },
                 { name: 'hooks', type: 'address' },
+                { name: 'poolManager', type: 'address' },
+                { name: 'fee', type: 'uint24' },
+                { name: 'parameters', type: 'bytes32' },
               ],
             },
             { name: 'zeroForOne', type: 'bool' },
@@ -304,46 +318,57 @@ export default function SwapPage() {
           poolKey: POOL_KEY,
           zeroForOne,
           amountIn: ethAmount,
-          amountOutMinimum: BigInt(0),  // TODO: add slippage protection
+          amountOutMinimum: BigInt(0),
           hookData: '0x',
         }]
       );
 
-      // SETTLE_ALL params: currency, maxAmount
+      // 2. Encode SETTLE_ALL params: (Currency currency, uint256 maxAmount)
       const settleCurrency = zeroForOne ? POOL_KEY.currency0 : POOL_KEY.currency1;
       const settleParams = encodeAbiParameters(
         [{ type: 'address' }, { type: 'uint256' }],
-        [settleCurrency, ethAmount]
+        [settleCurrency, MAX_UINT256]
       );
 
-      // TAKE_ALL params: currency, minAmount
+      // 3. Encode TAKE_ALL params: (Currency currency, uint256 minAmount)
       const takeCurrency = zeroForOne ? POOL_KEY.currency1 : POOL_KEY.currency0;
       const takeParams = encodeAbiParameters(
-        [{ type: 'address' }, { type: 'uint128' }],
-        [takeCurrency, BigInt(0)]  // TODO: add slippage protection
+        [{ type: 'address' }, { type: 'uint256' }],
+        [takeCurrency, BigInt(0)]
       );
 
-      // V4_SWAP input
-      const input = encodeAbiParameters(
+      // 4. Encode actions as bytes (each action is uint8)
+      const actions = encodePacked(
+        ['uint8', 'uint8', 'uint8'],
+        [CL_SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL]
+      );
+
+      // 5. Infinity command input: abi.encode(bytes actions, bytes[] params)
+      const actionData = encodeAbiParameters(
         [{ type: 'bytes' }, { type: 'bytes[]' }],
         [actions, [swapParams, settleParams, takeParams]]
       );
+
+      // 6. Universal Router command envelope: INFI_SWAP + actionData
+      const commands = encodePacked(['uint8'], [INFI_SWAP]);
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
 
       console.log('[Swap Params]', {
         fromToken,
         toToken,
         inputAmountWei: ethAmount.toString(),
         zeroForOne,
-        recipient,
-        deadline: deadline.toString(),
       });
+      console.log('[Actions]', actions);
+      console.log('[Action data length]', actionData.length);
 
+      // PancakeSwap V4 Universal Router uses execute(commands, inputs, deadline).
+      // Let the wallet simulate and show the concrete revert reason.
       await writeSwap({
         address: UNIVERSAL_ROUTER,
         abi: UniversalRouterABI,
         functionName: 'execute',
-        args: [CMD_V4_SWAP as `0x${string}`, [input], deadline],
-        ...(fromToken === 'ETH' && { value: ethAmount }),
+        args: [commands, [actionData], deadline],
       });
     } catch (err: unknown) {
       console.error('[Swap Error]:', err);
@@ -354,8 +379,8 @@ export default function SwapPage() {
   const handleSetMax = () => {
     setError(null);
     if (fromToken === 'ETH') {
-      const max = ethBalance > ETH_GAS_BUFFER ? ethBalance - ETH_GAS_BUFFER : BigInt(0);
-      setInputAmount(formatEther(max));
+      // Use WETH balance (not native ETH - no gas buffer needed for token)
+      setInputAmount(formatEther(wethBalance));
     } else {
       setInputAmount(formatEther(etimBalance));
     }
@@ -376,12 +401,12 @@ export default function SwapPage() {
     if (isNaN(amt) || amt === 0) return '$0.00';
     if (fromToken === 'ETH') {
       // ETH price * ETH amount (approximate $1800)
-      return `≈ $${(amt * 1800).toFixed(2)}`;
+      return `~$${(amt * 1800).toFixed(2)}`;
     } else {
       // ETIM amount / (ETIM per ETH) * ETH price
       if (etimPerEth > 0) {
         const ethValue = amt / etimPerEth;
-        return `≈ $${(ethValue * 1800).toFixed(2)}`;
+        return `~$${(ethValue * 1800).toFixed(2)}`;
       }
       return '';
     }
@@ -389,10 +414,10 @@ export default function SwapPage() {
 
   const buttonState = (() => {
     if (!isConnected) return { label: 'Connect Wallet', disabled: false };
-    if (isApproving) return { label: 'Approving…', disabled: true };
-    if (isSwapPending || isSwapConfirming) return { label: 'Swapping…', disabled: true };
+    if (isApproving) return { label: 'Approving...', disabled: true };
+    if (isSwapPending || isSwapConfirming) return { label: 'Swapping...', disabled: true };
     if (!inputAmount) return { label: 'Enter an amount', disabled: true };
-    if (isQuoting) return { label: 'Quoting…', disabled: true };
+    if (isQuoting) return { label: 'Quoting...', disabled: true };
     // If quote failed (willRevert is set), disable the button
     if (willRevert) return { label: 'Swap not available', disabled: true };
     try {
@@ -436,7 +461,7 @@ export default function SwapPage() {
                 {fromToken === 'ETH' ? (
                   <>
                     <div className="w-7 h-7 rounded-full bg-[#627EEA] flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">Ξ</span>
+                      <span className="text-white text-xs font-bold">E</span>
                     </div>
                     <span className="text-white font-medium">ETH</span>
                   </>
@@ -481,13 +506,13 @@ export default function SwapPage() {
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-4xl font-medium text-white truncate">
-                {isQuoting ? '…' : formatAmount(outputAmount)}
+                {isQuoting ? '...' : formatAmount(outputAmount)}
               </span>
               <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-[#2C2C2C] flex-shrink-0">
                 {toToken === 'ETH' ? (
                   <>
                     <div className="w-7 h-7 rounded-full bg-[#627EEA] flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">Ξ</span>
+                      <span className="text-white text-xs font-bold">E</span>
                     </div>
                     <span className="text-white font-medium">ETH</span>
                   </>
@@ -505,9 +530,9 @@ export default function SwapPage() {
         </div>
 
         {/* Approve Step */}
-        {fromToken === 'ETIM' && isApproving && (
+        {isApproving && (
           <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-            <p className="text-yellow-400 text-sm">Step 1/2 — Approving ETIM…</p>
+            <p className="text-yellow-400 text-sm">Step 1/2 - Approving {fromToken === 'ETIM' ? 'ETIM' : 'WETH'} for swap...</p>
           </div>
         )}
 
@@ -528,8 +553,7 @@ export default function SwapPage() {
               rel="noopener noreferrer"
               className="text-green-300 text-xs underline hover:text-green-200"
             >
-              View on BscScan →
-            </a>
+              View on BscScan</a>
           </div>
         )}
 
