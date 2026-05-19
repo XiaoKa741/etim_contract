@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CONTRACTS } from '@/config/contracts';
 import { useTranslation, type Locale } from '@/lib/i18n';
 
-type ArticleId = 'etim-whitepaper' | 'socialfi-intro' | 'socialfi-guide';
+type ArticleId = 'etim-whitepaper' | 'depin-intro' | 'depin-guide';
 
 type ArticleMeta = {
   id: ArticleId;
@@ -29,39 +29,39 @@ type GuideSection = {
 const ARTICLE_META: Record<Locale, ArticleMeta[]> = {
   en: [
     { id: 'etim-whitepaper', title: 'ETIM Whitepaper', subtitle: 'Original whitepaper content' },
-    { id: 'socialfi-intro', title: 'SocialFi-Wemark Introduction', subtitle: 'Product concept and core model' },
-    { id: 'socialfi-guide', title: 'SocialFi-Wemark Current Guide', subtitle: 'Current version usage instructions' }
+    { id: 'depin-intro', title: 'DePIN-Wemark Introduction', subtitle: 'Product concept and core model' },
+    { id: 'depin-guide', title: 'DePIN-Wemark Current Guide', subtitle: 'Current version usage instructions' }
   ],
   zh: [
     { id: 'etim-whitepaper', title: 'ETIM 白皮书', subtitle: '原版白皮书内容' },
-    { id: 'socialfi-intro', title: 'SocialFi-Wemark 介绍', subtitle: '产品定位与核心机制' },
-    { id: 'socialfi-guide', title: 'SocialFi-Wemark 现版本说明', subtitle: '当前版本使用指南' }
+    { id: 'depin-intro', title: 'DePIN-Wemark 介绍', subtitle: '产品定位与核心机制' },
+    { id: 'depin-guide', title: 'DePIN-Wemark 现版本说明', subtitle: '当前版本使用指南' }
   ],
   'zh-TW': [
     { id: 'etim-whitepaper', title: 'ETIM 白皮書', subtitle: '原版白皮書內容' },
-    { id: 'socialfi-intro', title: 'SocialFi-Wemark 介紹', subtitle: '產品定位與核心機制' },
-    { id: 'socialfi-guide', title: 'SocialFi-Wemark 現版本說明', subtitle: '目前版本使用指南' }
+    { id: 'depin-intro', title: 'DePIN-Wemark 介紹', subtitle: '產品定位與核心機制' },
+    { id: 'depin-guide', title: 'DePIN-Wemark 現版本說明', subtitle: '目前版本使用指南' }
   ],
   ja: [
     { id: 'etim-whitepaper', title: 'ETIM ホワイトペーパー', subtitle: '初期版ホワイトペーパー内容' },
-    { id: 'socialfi-intro', title: 'SocialFi-Wemark 紹介', subtitle: 'プロダクト概念と主要モデル' },
-    { id: 'socialfi-guide', title: 'SocialFi-Wemark 現行ガイド', subtitle: '現行バージョン利用説明' }
+    { id: 'depin-intro', title: 'DePIN-Wemark 紹介', subtitle: 'プロダクト概念と主要モデル' },
+    { id: 'depin-guide', title: 'DePIN-Wemark 現行ガイド', subtitle: '現行バージョン利用説明' }
   ],
   ko: [
     { id: 'etim-whitepaper', title: 'ETIM 백서', subtitle: '원본 백서 내용' },
-    { id: 'socialfi-intro', title: 'SocialFi-Wemark 소개', subtitle: '제품 포지셔닝과 핵심 메커니즘' },
-    { id: 'socialfi-guide', title: 'SocialFi-Wemark 최신 버전 안내', subtitle: '현재 버전 사용 설명' }
+    { id: 'depin-intro', title: 'DePIN-Wemark 소개', subtitle: '제품 포지셔닝과 핵심 메커니즘' },
+    { id: 'depin-guide', title: 'DePIN-Wemark 최신 버전 안내', subtitle: '현재 버전 사용 설명' }
   ],
   es: [
     { id: 'etim-whitepaper', title: 'Whitepaper de ETIM', subtitle: 'Contenido original del whitepaper' },
-    { id: 'socialfi-intro', title: 'Introduccion de SocialFi-Wemark', subtitle: 'Concepto del producto y modelo central' },
-    { id: 'socialfi-guide', title: 'Guia Actual de SocialFi-Wemark', subtitle: 'Instrucciones de uso de la version actual' }
+    { id: 'depin-intro', title: 'Introduccion de DePIN-Wemark', subtitle: 'Concepto del producto y modelo central' },
+    { id: 'depin-guide', title: 'Guia Actual de DePIN-Wemark', subtitle: 'Instrucciones de uso de la version actual' }
   ]
 };
 
 const INTRO_CONTENT: Record<Locale, { title: string; subtitle: string; sections: IntroSection[] }> = {
   en: {
-    title: 'SocialFi-Wemark Introduction',
+    title: 'DePIN-Wemark Introduction',
     subtitle: 'From online discovery to trusted offline social experiences',
     sections: [
       {
@@ -110,7 +110,7 @@ const INTRO_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   zh: {
-    title: 'SocialFi-Wemark 介绍',
+    title: 'DePIN-Wemark 介绍',
     subtitle: '从线上发现到线下见面的可信社交闭环',
     sections: [
       {
@@ -151,7 +151,7 @@ const INTRO_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   'zh-TW': {
-    title: 'SocialFi-Wemark 介紹',
+    title: 'DePIN-Wemark 介紹',
     subtitle: '從線上探索到線下見面的可信社交閉環',
     sections: [
       {
@@ -177,13 +177,13 @@ const INTRO_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   ja: {
-    title: 'SocialFi-Wemark 紹介',
+    title: 'DePIN-Wemark 紹介',
     subtitle: 'オンライン発見からオフライン面会までの信頼ループ',
     sections: [
       {
         id: 'intro-product',
         title: '1. プロダクトの位置付け',
-        paragraphs: ['WEMARK は、ショート動画で近くの人を見つけてオフラインで会う約束を作る SocialFi プラットフォームです。', 'オンライン発見、デポジット、対面、相互レビューの一連の流れで信頼を構築します。']
+        paragraphs: ['WEMARK は、ショート動画で近くの人を見つけてオフラインで会う約束を作る DePIN プラットフォームです。', 'オンライン発見、デポジット、対面、相互レビューの一連の流れで信頼を構築します。']
       },
       {
         id: 'intro-roles',
@@ -203,13 +203,13 @@ const INTRO_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   ko: {
-    title: 'SocialFi-Wemark 소개',
+    title: 'DePIN-Wemark 소개',
     subtitle: '온라인 발견에서 오프라인 만남까지 신뢰 루프',
     sections: [
       {
         id: 'intro-product',
         title: '1. 제품 포지셔닝',
-        paragraphs: ['WEMARK는 숏폼 콘텐츠로 주변 사용자를 찾고 오프라인 약속까지 연결하는 SocialFi 플랫폼입니다.', '온라인 발견, 보증금, 오프라인 만남, 상호 리뷰로 신뢰를 형성합니다.']
+        paragraphs: ['WEMARK는 숏폼 콘텐츠로 주변 사용자를 찾고 오프라인 약속까지 연결하는 DePIN 플랫폼입니다.', '온라인 발견, 보증금, 오프라인 만남, 상호 리뷰로 신뢰를 형성합니다.']
       },
       {
         id: 'intro-roles',
@@ -229,13 +229,13 @@ const INTRO_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   es: {
-    title: 'Introduccion de SocialFi-Wemark',
+    title: 'Introduccion de DePIN-Wemark',
     subtitle: 'Del descubrimiento online al encuentro offline con confianza',
     sections: [
       {
         id: 'intro-product',
         title: '1. Posicionamiento del producto',
-        paragraphs: ['WEMARK es una plataforma SocialFi para descubrir personas cercanas con video corto y concertar encuentros offline.', 'Su flujo cerrado combina descubrimiento, deposito de compromiso, reunion y evaluacion mutua.']
+        paragraphs: ['WEMARK es una plataforma DePIN para descubrir personas cercanas con video corto y concertar encuentros offline.', 'Su flujo cerrado combina descubrimiento, deposito de compromiso, reunion y evaluacion mutua.']
       },
       {
         id: 'intro-roles',
@@ -258,7 +258,7 @@ const INTRO_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
 
 const GUIDE_CONTENT: Record<Locale, { title: string; subtitle: string; sections: GuideSection[] }> = {
   en: {
-    title: 'SocialFi-Wemark Current Guide',
+    title: 'DePIN-Wemark Current Guide',
     subtitle: 'Current app workflow and operation manual',
     sections: [
       {
@@ -313,7 +313,7 @@ const GUIDE_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   zh: {
-    title: 'SocialFi-Wemark 现版本说明',
+    title: 'DePIN-Wemark 现版本说明',
     subtitle: '当前版本的操作路径与使用规则',
     sections: [
       {
@@ -348,7 +348,7 @@ const GUIDE_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   'zh-TW': {
-    title: 'SocialFi-Wemark 現版本說明',
+    title: 'DePIN-Wemark 現版本說明',
     subtitle: '目前版本操作與使用規則',
     sections: [
       { id: 'guide-wallet', title: '1. 錢包登入與質押', paragraphs: ['進入 wemark.etim.io，連接錢包登入。', '在個人面板點擊「Staking」質押 ETIM，可隨時贖回且不損失本金。', '質押合約地址：0xbffE782B37f8587bff9cC84597CC84597C'], images: [{ src: '/wemark/page1.jpg', alt: 'WEMARK 錢包登入與質押' }] },
@@ -359,7 +359,7 @@ const GUIDE_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   ja: {
-    title: 'SocialFi-Wemark 現行ガイド',
+    title: 'DePIN-Wemark 現行ガイド',
     subtitle: '現行バージョンの操作と利用ルール',
     sections: [
       { id: 'guide-wallet', title: '1. ウォレット接続とステーキング', paragraphs: ['wemark.etim.io にアクセスしてウォレットを接続します。', '個人パネルの「Staking」で ETIM をステーキング可能。元本を失わず、いつでも引き出しできます。', 'ステーキングコントラクト: 0xbffE782B37f8587bff9cC84597CC84597C'], images: [{ src: '/wemark/page1.jpg', alt: 'WEMARK ウォレット接続とステーキング' }] },
@@ -370,7 +370,7 @@ const GUIDE_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   ko: {
-    title: 'SocialFi-Wemark 최신 버전 안내',
+    title: 'DePIN-Wemark 최신 버전 안내',
     subtitle: '현재 버전의 사용 흐름과 운영 규칙',
     sections: [
       { id: 'guide-wallet', title: '1. 지갑 로그인 및 스테이킹', paragraphs: ['wemark.etim.io에 접속해 지갑을 연결합니다.', '개인 패널의 "Staking"에서 ETIM을 스테이킹할 수 있으며 원금 손실 없이 출금 가능합니다.', '스테이킹 컨트랙트: 0xbffE782B37f8587bff9cC84597CC84597C'], images: [{ src: '/wemark/page1.jpg', alt: 'WEMARK 지갑 로그인 및 스테이킹' }] },
@@ -381,7 +381,7 @@ const GUIDE_CONTENT: Record<Locale, { title: string; subtitle: string; sections:
     ]
   },
   es: {
-    title: 'Guia Actual de SocialFi-Wemark',
+    title: 'Guia Actual de DePIN-Wemark',
     subtitle: 'Flujo operativo y reglas de la version actual',
     sections: [
       { id: 'guide-wallet', title: '1. Conexion de wallet y staking', paragraphs: ['Inicia sesion en wemark.etim.io y conecta tu wallet.', 'En el panel personal, entra en "Staking" para bloquear ETIM. Puedes retirarlo sin perdida del principal.', 'Contrato de staking: 0xbffE782B37f8587bff9cC84597CC84597C'], images: [{ src: '/wemark/page1.jpg', alt: 'WEMARK wallet y staking' }] },
@@ -621,7 +621,7 @@ export default function WhitepaperPage() {
             </>
           )}
 
-          {activeArticle === 'socialfi-intro' && (
+          {activeArticle === 'depin-intro' && (
             <>
               <h1 className="text-3xl sm:text-4xl font-bold mb-2">{intro.title}</h1>
               <p className="text-gray-400 mb-12">{intro.subtitle}</p>
@@ -646,7 +646,7 @@ export default function WhitepaperPage() {
             </>
           )}
 
-          {activeArticle === 'socialfi-guide' && (
+          {activeArticle === 'depin-guide' && (
             <>
               <h1 className="text-3xl sm:text-4xl font-bold mb-2">{guide.title}</h1>
               <p className="text-gray-400 mb-12">{guide.subtitle}</p>

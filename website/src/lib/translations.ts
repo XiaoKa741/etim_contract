@@ -4,7 +4,7 @@ type Translations = Record<string, TranslationDict>;
 const en: TranslationDict = {
   // Nav
   'nav.home': 'Home',
-  'nav.socialFi': 'SocialFi',
+  'nav.socialFi': 'DePIN',
   'nav.dashboard': 'Dashboard',
   'nav.whitepaper': 'Whitepaper',
   'nav.gallery': 'Gallery',
@@ -238,7 +238,7 @@ const en: TranslationDict = {
 
   // Vision
   'vision.title': 'Core Architecture',
-  'vision.subtitle': 'ETIM breaks down the silos of digital entertainment with aggregated thinking, deeply fusing SocialFi + GameFi + VideoFi + DePIN, empowered by cutting-edge AI technology.',
+  'vision.subtitle': 'ETIM breaks down the silos of digital entertainment with aggregated thinking, deeply fusing DePIN + GameFi + VideoFi + DePIN, empowered by cutting-edge AI technology.',
   'vision.concept.title': 'Aggregated Entertainment Ecosystem',
   'vision.concept.desc': 'ETIM is not a single application, but a one-stop on-chain entertainment ecosystem that deeply integrates Gaming, Social Video, and DePIN. It builds an immersive, decentralized, and AI-driven digital entertainment universe.',
   'vision.tech.title': 'AI + DePIN Dual Moat',
@@ -251,7 +251,7 @@ const en: TranslationDict = {
   'ecosystem.gamefi.title': 'Game Aggregation (GameFi)',
   'ecosystem.gamefi.desc': 'Aggregating massive immersive blockchain games supporting Play-to-Earn and Play-to-Create modes. AI engine dynamically generates game content. NFT-driven assets (land, characters, equipment, skins) truly belong to users, freely tradeable on BNB Chain.',
   'ecosystem.gamefi.tags': 'Play-to-Earn, Play-to-Create, NFT Assets, AI Generation',
-  'ecosystem.socialfi.title': 'Social Video (SocialFi)',
+  'ecosystem.socialfi.title': 'Social Video (DePIN)',
   'ecosystem.socialfi.desc': 'A unified product seamlessly combining social interaction with short video creation. Browse videos, real-time comments, likes, shares, live streaming, topic challenges \u2014 all recorded on-chain as tradeable social capital. Supports Watch-to-Earn, Create-to-Earn, and Share-to-Earn.',
   'ecosystem.socialfi.tags': 'Watch-to-Earn, Create-to-Earn, Share-to-Earn, DAO Governance',
   'ecosystem.depin.title': 'DePIN Infrastructure',
@@ -273,7 +273,7 @@ const en: TranslationDict = {
 
 const zh: TranslationDict = {
   'nav.home': '首页',
-  'nav.socialFi': '社交',
+  'nav.socialFi': 'DePIN',
   'nav.dashboard': '仪表板',
   'nav.whitepaper': '白皮书',
   'nav.gallery': '图库',
@@ -479,7 +479,7 @@ const zh: TranslationDict = {
   'deposit.resetTime': '重置时间',
 
   'vision.title': '核心架构',
-  'vision.subtitle': 'ETIM 以聚合思维打破场景孤岛，深度融合 SocialFi + GameFi + VideoFi + DePIN，先进 AI 技术全面赋能。',
+  'vision.subtitle': 'ETIM 以聚合思维打破场景孤岛，深度融合 DePIN + GameFi + VideoFi + DePIN，先进 AI 技术全面赋能。',
   'vision.concept.title': '聚合娱乐生态',
   'vision.concept.desc': 'ETIM 不是单一应用，而是将游戏、社交短视频、DePIN 三大核心板块深度集合的一站式全链上娱乐生态，构建起沉浸式、去中心化、智能驱动的数字娱乐新宇宙。',
   'vision.tech.title': 'AI + DePIN 双重护城河',
@@ -491,7 +491,7 @@ const zh: TranslationDict = {
   'ecosystem.gamefi.title': '游戏聚合（GameFi）',
   'ecosystem.gamefi.desc': '汇聚海量多样化沉浸式区块链游戏，支持 Play-to-Earn、Play-to-Create 等前沿模式。AI 智能引擎负责游戏内容动态生成。NFT 驱动的资产（土地、角色、装备、皮肤等）真正属于用户，可在 BNB Chain 自由交易。',
   'ecosystem.gamefi.tags': 'Play-to-Earn, Play-to-Create, NFT 资产, AI 生成',
-  'ecosystem.socialfi.title': '社交短视频（SocialFi）',
+  'ecosystem.socialfi.title': '社交短视频（DePIN）',
   'ecosystem.socialfi.desc': '社交互动与短视频创作无缝融合的一体化产品。刷视频、实时评论、点赞、分享、直播连麦、话题挑战等全链路操作均通过智能合约记录在链上，成为可交易的社交资本。支持 Watch-to-Earn、Create-to-Earn、Share-to-Earn。',
   'ecosystem.socialfi.tags': 'Watch-to-Earn, Create-to-Earn, Share-to-Earn, DAO 治理',
   'ecosystem.depin.title': 'DePIN 基础设施',
@@ -512,7 +512,7 @@ const zh: TranslationDict = {
 
 const ja: TranslationDict = {
   'nav.home': 'ホーム',
-  'nav.socialFi': 'ソーシャル',
+  'nav.socialFi': 'DePIN',
   'nav.dashboard': 'ダッシュボード',
   'nav.whitepaper': 'ホワイトペーパー',
   'nav.gallery': 'ギャラリー',
@@ -717,7 +717,7 @@ const ja: TranslationDict = {
   'deposit.resetTime': 'リセット時間',
 
   'vision.title': 'コアアーキテクチャ',
-  'vision.subtitle': 'ETIMは統合思考でシーンの孤島を打破し、SocialFi + GameFi + VideoFi + DePINを深く融合、最先端AIテクノロジーで全面的に強化。',
+  'vision.subtitle': 'ETIMは統合思考でシーンの孤島を打破し、DePIN + GameFi + VideoFi + DePINを深く融合、最先端AIテクノロジーで全面的に強化。',
   'vision.concept.title': '統合エンターテインメントエコシステム',
   'vision.concept.desc': 'ETIMは単一のアプリケーションではなく、ゲーム、ソーシャル動画、DePINの3つのコア分野を深く統合したワンストップのフルオンチェーンエンターテインメントエコシステムです。没入型、分散型、AI駆動のデジタルエンターテインメント新宇宙を構築します。',
   'vision.tech.title': 'AI + DePIN デュアルモート',
@@ -729,7 +729,7 @@ const ja: TranslationDict = {
   'ecosystem.gamefi.title': 'ゲーム統合（GameFi）',
   'ecosystem.gamefi.desc': '大量の多様な没入型ブロックチェーンゲームを集約。Play-to-Earn、Play-to-Createモードをサポート。AIエンジンがゲームコンテンツを動的生成。NFT駆動の資産（土地、キャラクター、装備、スキン）は本当にユーザーのもの。',
   'ecosystem.gamefi.tags': 'Play-to-Earn, Play-to-Create, NFT資産, AI生成',
-  'ecosystem.socialfi.title': 'ソーシャル動画（SocialFi）',
+  'ecosystem.socialfi.title': 'ソーシャル動画（DePIN）',
   'ecosystem.socialfi.desc': 'ソーシャルインタラクションとショート動画制作をシームレスに融合。動画視聴、リアルタイムコメント、いいね、シェア、ライブ配信 \u2014 すべてオンチェーンに記録され、取引可能なソーシャルキャピタルに。Watch-to-Earn、Create-to-Earn、Share-to-Earnをサポート。',
   'ecosystem.socialfi.tags': 'Watch-to-Earn, Create-to-Earn, Share-to-Earn, DAOガバナンス',
   'ecosystem.depin.title': 'DePINインフラストラクチャ',
@@ -750,7 +750,7 @@ const ja: TranslationDict = {
 
 const ko: TranslationDict = {
   'nav.home': '홈',
-  'nav.socialFi': '소셜',
+  'nav.socialFi': 'DePIN',
   'nav.dashboard': '대시보드',
   'nav.whitepaper': '백서',
   'nav.gallery': '갤러리',
@@ -956,7 +956,7 @@ const ko: TranslationDict = {
   'deposit.resetTime': '초기화 시간',
 
   'vision.title': '핵심 아키텍처',
-  'vision.subtitle': 'ETIM은 통합적 사고로 씬의 고립을 타파하고 SocialFi + GameFi + VideoFi + DePIN을 깊이 융합, 최첨단 AI 기술로 전면 강화.',
+  'vision.subtitle': 'ETIM은 통합적 사고로 씬의 고립을 타파하고 DePIN + GameFi + VideoFi + DePIN을 깊이 융합, 최첨단 AI 기술로 전면 강화.',
   'vision.concept.title': '통합 엔터테인먼트 생태계',
   'vision.concept.desc': 'ETIM은 단일 애플리케이션이 아닌, 게임, 소셜 비디오, DePIN 3대 핵심 분야를 깊이 통합한 원스톱 풀 온체인 엔터테인먼트 생태계입니다. 몰입형, 탈중앙화, AI 기반 디지털 엔터테인먼트 새 우주를 구축합니다.',
   'vision.tech.title': 'AI + DePIN 이중 해자',
@@ -968,7 +968,7 @@ const ko: TranslationDict = {
   'ecosystem.gamefi.title': '게임 통합 (GameFi)',
   'ecosystem.gamefi.desc': '대규모 다양한 몰입형 블록체인 게임을 통합. Play-to-Earn, Play-to-Create 모드 지원. AI 엔진이 게임 콘텐츠를 동적 생성. NFT 기반 자산(토지, 캐릭터, 장비, 스킨)은 진정으로 사용자 소유.',
   'ecosystem.gamefi.tags': 'Play-to-Earn, Play-to-Create, NFT 자산, AI 생성',
-  'ecosystem.socialfi.title': '소셜 비디오 (SocialFi)',
+  'ecosystem.socialfi.title': '소셜 비디오 (DePIN)',
   'ecosystem.socialfi.desc': '소셜 인터랙션과 숏비디오 창작을 원활하게 융합한 통합 제품. 비디오 시청, 실시간 댓글, 좋아요, 공유, 라이브 스트리밍 \u2014 모두 온체인에 기록되어 거래 가능한 소셜 자본이 됩니다. Watch-to-Earn, Create-to-Earn, Share-to-Earn 지원.',
   'ecosystem.socialfi.tags': 'Watch-to-Earn, Create-to-Earn, Share-to-Earn, DAO 거버넌스',
   'ecosystem.depin.title': 'DePIN 인프라',
@@ -989,7 +989,7 @@ const ko: TranslationDict = {
 
 const es: TranslationDict = {
   'nav.home': 'Inicio',
-  'nav.socialFi': 'Social',
+  'nav.socialFi': 'DePIN',
   'nav.dashboard': 'Panel',
   'nav.whitepaper': 'Libro Blanco',
   'nav.gallery': 'Galería',
@@ -1195,7 +1195,7 @@ const es: TranslationDict = {
   'deposit.resetTime': 'Se reinicia a las',
 
   'vision.title': 'Arquitectura Central',
-  'vision.subtitle': 'ETIM rompe los silos del entretenimiento digital con pensamiento agregado, fusionando profundamente SocialFi + GameFi + VideoFi + DePIN, potenciado por tecnología IA de vanguardia.',
+  'vision.subtitle': 'ETIM rompe los silos del entretenimiento digital con pensamiento agregado, fusionando profundamente DePIN + GameFi + VideoFi + DePIN, potenciado por tecnología IA de vanguardia.',
   'vision.concept.title': 'Ecosistema de Entretenimiento Agregado',
   'vision.concept.desc': 'ETIM no es una aplicación única, sino un ecosistema de entretenimiento integral en cadena que integra profundamente Gaming, Video Social y DePIN. Construye un universo de entretenimiento digital inmersivo, descentralizado e impulsado por IA.',
   'vision.tech.title': 'Foso Dual AI + DePIN',
@@ -1207,7 +1207,7 @@ const es: TranslationDict = {
   'ecosystem.gamefi.title': 'Agregación de Juegos (GameFi)',
   'ecosystem.gamefi.desc': 'Agregando juegos blockchain inmersivos masivos con soporte para modos Play-to-Earn y Play-to-Create. El motor IA genera contenido de juego dinámicamente. Los activos NFT (terrenos, personajes, equipos, skins) realmente pertenecen a los usuarios.',
   'ecosystem.gamefi.tags': 'Play-to-Earn, Play-to-Create, Activos NFT, Generación IA',
-  'ecosystem.socialfi.title': 'Video Social (SocialFi)',
+  'ecosystem.socialfi.title': 'Video Social (DePIN)',
   'ecosystem.socialfi.desc': 'Un producto unificado que fusiona interacción social con creación de videos cortos. Ver videos, comentarios en tiempo real, likes, compartir, streaming en vivo \u2014 todo registrado en cadena como capital social negociable. Soporta Watch-to-Earn, Create-to-Earn y Share-to-Earn.',
   'ecosystem.socialfi.tags': 'Watch-to-Earn, Create-to-Earn, Share-to-Earn, Gobernanza DAO',
   'ecosystem.depin.title': 'Infraestructura DePIN',
@@ -1228,7 +1228,7 @@ const es: TranslationDict = {
 
 const zhTW: TranslationDict = {
   'nav.home': '首頁',
-  'nav.socialFi': '社交',
+  'nav.socialFi': 'DePIN',
   'nav.dashboard': '儀表板',
   'nav.whitepaper': '白皮書',
   'nav.gallery': '圖庫',
@@ -1434,7 +1434,7 @@ const zhTW: TranslationDict = {
   'deposit.resetTime': '重置時間',
 
   'vision.title': '核心架構',
-  'vision.subtitle': 'ETIM 以聚合思維打破場景孤島，深度融合 SocialFi + GameFi + VideoFi + DePIN，先進 AI 技術全面賦能。',
+  'vision.subtitle': 'ETIM 以聚合思維打破場景孤島，深度融合 DePIN + GameFi + VideoFi + DePIN，先進 AI 技術全面賦能。',
   'vision.concept.title': '聚合娛樂生態',
   'vision.concept.desc': 'ETIM 不是單一應用，而是將遊戲、社交短影片、DePIN 三大核心板塊深度集合的一站式全鏈上娛樂生態，構建起沉浸式、去中心化、智慧驅動的數位娛樂新宇宙。',
   'vision.tech.title': 'AI + DePIN 雙重護城河',
@@ -1446,7 +1446,7 @@ const zhTW: TranslationDict = {
   'ecosystem.gamefi.title': '遊戲聚合（GameFi）',
   'ecosystem.gamefi.desc': '匯聚海量多樣化沉浸式區塊鏈遊戲，支援 Play-to-Earn、Play-to-Create 等前沿模式。AI 智慧引擎負責遊戲內容動態生成。NFT 驅動的資產（土地、角色、裝備、皮膚等）真正屬於用戶，可在 BNB Chain 自由交易。',
   'ecosystem.gamefi.tags': 'Play-to-Earn, Play-to-Create, NFT 資產, AI 生成',
-  'ecosystem.socialfi.title': '社交短影片（SocialFi）',
+  'ecosystem.socialfi.title': '社交短影片（DePIN）',
   'ecosystem.socialfi.desc': '社交互動與短影片創作無縫融合的一體化產品。刷影片、即時留言、按讚、分享、直播連麥、話題挑戰等全鏈路操作均透過智慧合約記錄在鏈上，成為可交易的社交資本。支援 Watch-to-Earn、Create-to-Earn、Share-to-Earn。',
   'ecosystem.socialfi.tags': 'Watch-to-Earn, Create-to-Earn, Share-to-Earn, DAO 治理',
   'ecosystem.depin.title': 'DePIN 基礎設施',
