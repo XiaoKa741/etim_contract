@@ -4,6 +4,7 @@ type Translations = Record<string, TranslationDict>;
 const en: TranslationDict = {
   // Nav
   'nav.home': 'Home',
+  'nav.socialFi': 'SocialFi',
   'nav.dashboard': 'Dashboard',
   'nav.whitepaper': 'Whitepaper',
   'nav.gallery': 'Gallery',
@@ -272,6 +273,7 @@ const en: TranslationDict = {
 
 const zh: TranslationDict = {
   'nav.home': '首页',
+  'nav.socialFi': '社交',
   'nav.dashboard': '仪表板',
   'nav.whitepaper': '白皮书',
   'nav.gallery': '图库',
@@ -510,6 +512,7 @@ const zh: TranslationDict = {
 
 const ja: TranslationDict = {
   'nav.home': 'ホーム',
+  'nav.socialFi': 'ソーシャル',
   'nav.dashboard': 'ダッシュボード',
   'nav.whitepaper': 'ホワイトペーパー',
   'nav.gallery': 'ギャラリー',
@@ -747,6 +750,7 @@ const ja: TranslationDict = {
 
 const ko: TranslationDict = {
   'nav.home': '홈',
+  'nav.socialFi': '소셜',
   'nav.dashboard': '대시보드',
   'nav.whitepaper': '백서',
   'nav.gallery': '갤러리',
@@ -985,6 +989,7 @@ const ko: TranslationDict = {
 
 const es: TranslationDict = {
   'nav.home': 'Inicio',
+  'nav.socialFi': 'Social',
   'nav.dashboard': 'Panel',
   'nav.whitepaper': 'Libro Blanco',
   'nav.gallery': 'Galería',
@@ -1223,6 +1228,7 @@ const es: TranslationDict = {
 
 const zhTW: TranslationDict = {
   'nav.home': '首頁',
+  'nav.socialFi': '社交',
   'nav.dashboard': '儀表板',
   'nav.whitepaper': '白皮書',
   'nav.gallery': '圖庫',

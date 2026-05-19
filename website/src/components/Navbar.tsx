@@ -94,6 +94,9 @@ export function Navbar() {
             <Link href="/" className="text-gray-300 hover:text-white transition-colors text-sm">
               {t('nav.home')}
             </Link>
+            <a href="https://wemark.etim.io" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-white transition-colors text-sm">
+              {t('nav.socialFi')}
+            </a>
             <Link href="/swap" className="text-gray-300 hover:text-white transition-colors text-sm">
               {t('nav.swap')}
             </Link>
@@ -131,6 +134,9 @@ export function Navbar() {
             <Link href="/" className="text-gray-300 hover:text-white py-2" onClick={() => setMobileOpen(false)}>
               {t('nav.home')}
             </Link>
+            <a href="https://wemark.etim.io" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-white py-2" onClick={() => setMobileOpen(false)}>
+              {t('nav.socialFi')}
+            </a>
             <Link href="/swap" className="text-gray-300 hover:text-white py-2" onClick={() => setMobileOpen(false)}>
               {t('nav.swap')}
             </Link>
